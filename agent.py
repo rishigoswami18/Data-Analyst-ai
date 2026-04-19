@@ -115,15 +115,16 @@ def query_dataset(user_query, file_path):
     "{user_query}"
 
     Instructions:
-    1. Inspect the schema, choose the relevant columns, and answer only from the dataset.
-    2. Write Python code that uses pandas and, if needed, matplotlib to answer the request.
-    3. Use defensive data handling for nulls, date parsing, numeric coercion, and sorting when helpful.
-    4. Return the final user-facing result with `print()`. Keep the wording clear, professional, and natural.
-    5. If the user asks for a chart, save it exactly to `static/charts/trend.png` and print `CHART_GENERATED: trend.png`.
-    6. If the request cannot be answered from the available columns, print a short explanation naming the missing information.
-    7. Do not fabricate metrics, assumptions, or columns.
-    8. Do not import restricted modules or access files, networks, or the OS.
-    9. Return executable Python only. No markdown and no explanation outside the code.
+    1. Write a python code snippet that uses pandas to answer the user's question.
+    2. To return the final answer, use python's 'print()' function. The printed output is what the user will see.
+    3. Make the printed output conversational and friendly (e.g., "The total revenue is $X").
+    4. If the question asks for a chart or trend, write code using matplotlib to save the chart absolutely EXACTLY to the path 'static/charts/trend.png', and then print "CHART_GENERATED: trend.png".
+    5. Do NOT include ANY text outside of the python code block. Only return the executable code.
+    6. Ensure you handle missing values or basic string conversions if needed.
+    7. CRITICAL: If you use pandas `.dt.to_period()` for dates, you MUST convert that column to strings (e.g., `.astype(str)`) BEFORE plotting with matplotlib. Matplotlib cannot plot 'Period' objects and will crash.
+    8. Do not fabricate metrics, assumptions, or columns.
+    9. Do not import restricted modules or access files, networks, or the OS.
+    10. Return executable Python only. No markdown and no explanation outside the code.
     """
 
     try:
