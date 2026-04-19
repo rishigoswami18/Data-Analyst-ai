@@ -1,49 +1,80 @@
-# AI Data Analyst Chatbot 🚀📊
+# Data Analysis Assistant
 
-A full-stack, end-to-end Data Analysis agent that allows users to upload any CSV or Excel file and chat intelligently with their data using Natural Language. Zero technical knowledge required. Ask a question -> Get the metric, or get a visually generated plot instantly!
+This project is a web-based data analysis assistant built with Flask, Pandas, and the Groq API. Users can upload CSV or Excel files, ask questions in natural language, and get answers based on the uploaded dataset. The app can also generate charts when a visual summary is more useful than plain text.
 
-Built natively with **Flask**, **Pandas**, and the ultra-fast **Groq AI (Llama 3)** engine. UI features a fully responsive, modern Glassmorphism SaaS aesthetic.
+The goal of the project is to show practical use of LLMs in a data workflow, not just a basic chatbot interface. It combines file upload, dataset understanding, prompt-based code generation, pandas execution, and result presentation in a single application.
 
-## Features ✨
-- **Natural Language to Code:** Translates normal questions like *"What is the total revenue?"* into real, hallucination-free mathematical calculations via an embedded AI Agent.
-- **Dynamic Chart Generation:** Ask the bot to *"Plot a monthly sales trend"* and it will generate the matplotlib figure directly inside your chat.
-- **Robust Error Handling:** Smoothly bounces back from bad data uploads, handles non-UTF8 Encoded databases natively (e.g., Windows ISO-8859-1 formats), and tracks missing dependencies seamlessly.
-- **Premium UI:** Dark-mode Glassmorphism dashboard running entirely on HTML/JS/CSS without heavy frontend frameworks.
+## Features
 
-## Tech Stack 🛠️
-- **Backend Frame:** Flask (Python)
-- **Data Engine:** Pandas / Matplotlib
-- **AI Brain:** `groq` SDK powered by `Llama-3.3-70b-versatile`
-- **Frontend:** Vanilla JS / HTML / CSS Variables
+- Upload `.csv` and `.xlsx` datasets
+- Ask analytical questions in natural language
+- Generate summaries, comparisons, rankings, and trends
+- Create charts for visual analysis
+- Handle common CSV encoding issues
+- Present results in a clean web interface
 
-## Getting Started 💻
-### 1. Clone & Install
+## Tech Stack
+
+- Python
+- Flask
+- Pandas
+- Matplotlib
+- Groq API
+- HTML, CSS, JavaScript
+
+## Project Structure
+
+- `app.py` handles routing, uploads, chat requests, and chart responses
+- `agent.py` prepares dataset context, sends prompts to the model, and executes generated analysis code
+- `templates/index.html` contains the main interface
+- `static/style.css` contains the styling
+- `static/script.js` manages uploads and chat interactions
+
+## How It Works
+
+1. The user uploads a dataset.
+2. The backend reads the file and prepares schema information.
+3. A prompt is sent to the language model with dataset context.
+4. The model returns pandas code to answer the question.
+5. The code is executed and the result is shown in the interface.
+6. If needed, a chart is generated and displayed in the chat.
+
+## Setup
+
+Install dependencies:
+
 ```bash
-git clone https://github.com/yourusername/DataAnalystChatbot.git
-cd DataAnalystChatbot
-
-# Install requirements
 pip install -r requirements.txt
 ```
 
-### 2. Configure Environment
-Create an environment file:
+Create the environment file:
+
 ```bash
-mv .env.example .env
-```
-Inside `.env`, insert your **free** Groq API Key retrieved from [console.groq.com](https://console.groq.com/keys):
-```
-GROQ_API_KEY=gsk_your_actual_key_here
+copy .env.example .env
 ```
 
-### 3. Run Application
+Add your Groq API key in `.env`:
+
+```env
+GROQ_API_KEY=your_api_key_here
+```
+
+Run the application:
+
 ```bash
 python app.py
 ```
-Open your browser to `http://localhost:5000` to start chatting with your datasets. 
 
-## Supported Formats
-Supports `.csv` and `.xlsx` via standard DataFrame ingestion.
+Then open `http://localhost:5000`.
 
-## Contributing
-Feel free to open a Pull Request if you'd like to integrate conversational memory buffers or secure containerized sandboxing!
+## Example Questions
+
+- `What is the total revenue?`
+- `Which category has the highest sales?`
+- `Show the top 5 products by profit`
+- `Plot a monthly sales trend`
+- `Compare discount and profit margin`
+
+## Use Case
+
+This project can be used as a portfolio project for roles related to data science, machine learning, analytics, and AI engineering because it demonstrates how LLMs can be integrated into a real analysis workflow.

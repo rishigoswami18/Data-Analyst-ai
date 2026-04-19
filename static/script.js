@@ -15,7 +15,7 @@ fileInput.addEventListener('change', async () => {
     const file = fileInput.files[0];
     if (!file) return;
 
-    statusMsg.textContent = "Uploading...";
+    statusMsg.textContent = "Uploading dataset...";
     statusMsg.style.color = "#ccc";
 
     const formData = new FormData();
@@ -29,14 +29,14 @@ fileInput.addEventListener('change', async () => {
         const data = await response.json();
 
         if (response.ok) {
-            statusMsg.textContent = "Dataset Loaded!";
+            statusMsg.textContent = "Dataset ready for analysis";
             statusMsg.style.color = "#4ade80";
             
             // Enable chat
             chatInput.disabled = false;
             sendBtn.disabled = false;
             
-            appendSystemMessage("Dataset loaded! What would you like to know?");
+            appendSystemMessage(`Dataset loaded: ${data.filename}. You can now ask for summaries, comparisons, trends, or charts.`);
         } else {
             statusMsg.textContent = data.error;
             statusMsg.style.color = "#ef4444"; // red
@@ -60,7 +60,7 @@ document.querySelectorAll('.examples-section li').forEach(li => {
             chatInput.value = li.textContent.replace(/"/g, '');
             sendQuery();
         } else {
-            alert("Please upload a dataset first!");
+            alert("Upload a dataset first to activate analysis.");
         }
     });
 });
@@ -78,7 +78,7 @@ async function sendQuery() {
     sendBtn.disabled = true;
 
     // Add loading message
-    const loadingId = appendSystemMessage("Thinking...");
+    const loadingId = appendSystemMessage("Working on your question...");
 
     try {
         const response = await fetch('/chat', {
@@ -135,7 +135,7 @@ function appendSystemMessage(text, chartUrl = null) {
     
     // Use innerHTML because we might inject an unescaped img tag immediately after escaped text
     div.innerHTML = `
-        <div class="avatar">AI</div>
+        <div class="avatar">AG</div>
         <div class="bubble"></div>
     `;
     div.querySelector('.bubble').innerHTML = bubbleContent;

@@ -3,56 +3,68 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Data Analyst</title>
-    <!-- Use Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <!-- Link external CSS -->
+    <title>Agentic Analytics Copilot</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <div class="app-container">
-        <!-- Sidebar for File Uploads -->
         <aside class="sidebar">
             <div class="sidebar-header">
-                <h2>AI Data Analyst</h2>
+                <span class="eyebrow">AI-Powered Data Analysis</span>
+                <h2>Data Analysis Assistant</h2>
+                <p>Upload a dataset and explore trends, KPIs, and business insights through natural language questions.</p>
             </div>
             <div class="upload-section">
-                <p>Upload a CSV file to interact with your data.</p>
+                <p>Supports `.csv` and `.xlsx` files for KPI analysis, trend discovery, and chart generation.</p>
                 <input type="file" id="file-input" accept=".csv, .xlsx" style="display: none;">
-                <button id="upload-btn" class="primary-btn">Choose Dataset</button>
+                <button id="upload-btn" class="primary-btn">Upload Dataset</button>
                 <div id="upload-status" class="status-msg"></div>
             </div>
-            
-            <div class="examples-section">
-                <h3>Try Asking:</h3>
+
+            <div class="capability-section">
+                <h3>Capabilities</h3>
                 <ul>
-                    <li>"What is total revenue?"</li>
-                    <li>"Average sales?"</li>
-                    <li>"Top 5 products?"</li>
-                    <li>"Plot a monthly sales trend"</li>
+                    <li>Understands uploaded tabular data</li>
+                    <li>Answers analytical questions using pandas</li>
+                    <li>Summarizes results clearly</li>
+                    <li>Creates charts when needed</li>
+                </ul>
+            </div>
+
+            <div class="examples-section">
+                <h3>Suggested Prompts</h3>
+                <ul>
+                    <li>"Summarize the top business KPIs in this dataset"</li>
+                    <li>"Which regions are driving the most revenue and profit?"</li>
+                    <li>"Show the top 5 products by sales with contribution percentages"</li>
+                    <li>"Plot a monthly sales trend and call out the strongest month"</li>
                 </ul>
             </div>
         </aside>
 
-        <!-- Main Chat Area -->
         <main class="chat-container">
+            <section class="hero-panel">
+                <div>
+                    <span class="hero-tag">Portfolio Project</span>
+                    <h1>Ask questions about your data</h1>
+                    <p>A simple analytics interface for exploring uploaded datasets, generating insights, and visualizing trends.</p>
+                </div>
+            </section>
+
             <div id="chat-box" class="chat-box">
-                <!-- Chat messages will be injected here via JavaScript -->
                 <div class="message system-message">
-                    <div class="avatar">AI</div>
-                    <div class="bubble">Hello! I am your AI Data Analyst. Please upload a dataset from the sidebar to begin.</div>
+                    <div class="avatar">AG</div>
+                    <div class="bubble">Welcome. Upload a dataset to begin, and then ask questions about trends, summaries, comparisons, or charts.</div>
                 </div>
             </div>
 
-            <!-- Input Area -->
             <div class="input-area">
-                <input type="text" id="chat-input" placeholder="Type your data question here..." autocomplete="off" disabled>
-                <button id="send-btn" disabled>Send</button>
+                <input type="text" id="chat-input" placeholder="Ask a question about your dataset..." autocomplete="off" disabled>
+                <button id="send-btn" disabled>Analyze</button>
             </div>
         </main>
     </div>
 
-    <!-- Link external JS -->
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>
