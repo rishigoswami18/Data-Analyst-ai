@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Data Analyst</title>
+    <!-- Use Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Link external CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar for File Uploads -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2>AI Data Analyst</h2>
+            </div>
+            <div class="upload-section">
+                <p>Upload a CSV file to interact with your data.</p>
+                <input type="file" id="file-input" accept=".csv, .xlsx" style="display: none;">
+                <button id="upload-btn" class="primary-btn">Choose Dataset</button>
+                <div id="upload-status" class="status-msg"></div>
+            </div>
+            
+            <div class="examples-section">
+                <h3>Try Asking:</h3>
+                <ul>
+                    <li>"What is total revenue?"</li>
+                    <li>"Average sales?"</li>
+                    <li>"Top 5 products?"</li>
+                    <li>"Plot a monthly sales trend"</li>
+                </ul>
+            </div>
+        </aside>
+
+        <!-- Main Chat Area -->
+        <main class="chat-container">
+            <div id="chat-box" class="chat-box">
+                <!-- Chat messages will be injected here via JavaScript -->
+                <div class="message system-message">
+                    <div class="avatar">AI</div>
+                    <div class="bubble">Hello! I am your AI Data Analyst. Please upload a dataset from the sidebar to begin.</div>
+                </div>
+            </div>
+
+            <!-- Input Area -->
+            <div class="input-area">
+                <input type="text" id="chat-input" placeholder="Type your data question here..." autocomplete="off" disabled>
+                <button id="send-btn" disabled>Send</button>
+            </div>
+        </main>
+    </div>
+
+    <!-- Link external JS -->
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

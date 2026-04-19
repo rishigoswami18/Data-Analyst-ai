@@ -1,0 +1,9 @@
+Flask
+gunicorn
+openai
+groq
+pandas
+matplotlib
+python-dotenv
+tabulate
+openpyxl

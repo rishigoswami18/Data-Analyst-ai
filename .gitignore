@@ -1,0 +1,26 @@
+# Environments
+.env
+venv/
+env/
+.venv/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Uploads and temporary data
+uploads/*
+!uploads/.gitkeep
+
+# Generated dynamic charts 
+static/charts/*
+!static/charts/.gitkeep
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
