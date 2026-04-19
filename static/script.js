@@ -1,6 +1,9 @@
 const uploadBtn = document.getElementById('upload-btn');
 const fileInput = document.getElementById('file-input');
 const statusMsg = document.getElementById('upload-status');
+const datasetSection = document.getElementById('dataset-section');
+const datasetMetrics = document.getElementById('dataset-metrics');
+const datasetColumnsList = document.getElementById('dataset-columns-list');
 
 const chatInput = document.getElementById('chat-input');
 const sendBtn = document.getElementById('send-btn');
@@ -31,6 +34,7 @@ fileInput.addEventListener('change', async () => {
         if (response.ok) {
             statusMsg.textContent = "Dataset ready for analysis";
             statusMsg.style.color = "#4ade80";
+            renderDatasetSummary(data.dataset_summary);
             
             // Enable chat
             chatInput.disabled = false;
@@ -164,4 +168,38 @@ function escapeHtml(unsafe) {
          .replace(/>/g, "&gt;")
          .replace(/"/g, "&quot;")
          .replace(/'/g, "&#039;");
+}
+
+function renderDatasetSummary(summary) {
+    if (!summary) return;
+
+    datasetSection.hidden = false;
+
+    datasetMetrics.innerHTML = `
+        <div class="dataset-metric-card">
+            <span class="metric-label">Rows</span>
+            <strong>${summary.rows}</strong>
+        </div>
+        <div class="dataset-metric-card">
+            <span class="metric-label">Columns</span>
+            <strong>${summary.columns}</strong>
+        </div>
+        <div class="dataset-metric-card">
+            <span class="metric-label">Numeric</span>
+            <strong>${summary.numeric_columns}</strong>
+        </div>
+        <div class="dataset-metric-card">
+            <span class="metric-label">Missing</span>
+            <strong>${summary.missing_values}</strong>
+        </div>
+    `;
+
+    datasetColumnsList.innerHTML = summary.preview_columns
+        .map(column => `
+            <div class="dataset-column-chip">
+                <span>${escapeHtml(column.name)}</span>
+                <small>${escapeHtml(column.dtype)}</small>
+            </div>
+        `)
+        .join('');
 }

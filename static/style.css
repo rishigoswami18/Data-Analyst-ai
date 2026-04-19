@@ -153,6 +153,78 @@ body {
     border-radius: 16px;
 }
 
+.dataset-section {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    padding: 18px;
+    border-radius: 16px;
+}
+
+.dataset-section h3,
+.dataset-columns h4 {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.dataset-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.dataset-metric-card {
+    padding: 12px;
+    border-radius: 12px;
+    background: rgba(15, 23, 42, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.metric-label {
+    display: block;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.dataset-columns {
+    margin-top: 16px;
+}
+
+.dataset-columns-list {
+    display: grid;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.dataset-column-chip {
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
+.dataset-column-chip span {
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    word-break: break-word;
+}
+
+.dataset-column-chip small {
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    text-transform: uppercase;
+}
+
 .capability-section h3 {
     font-size: 0.85rem;
     text-transform: uppercase;

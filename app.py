@@ -1,9 +1,12 @@
 import os
-from flask import Flask, render_template, request, jsonify, url_for
+import uuid
+import pandas as pd
+from flask import Flask, render_template, request, jsonify, url_for, session
 from werkzeug.utils import secure_filename
 from agent import query_dataset
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'dev-secret-key')
 
 # Configure folders
 UPLOAD_FOLDER = 'uploads'
@@ -13,11 +16,43 @@ os.makedirs(CHARTS_FOLDER, exist_ok=True)
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# Global variable to track active file context
-# In a production app, use Sessions or a Database!
-session_state = {
-    'active_file_path': None
-}
+ALLOWED_EXTENSIONS = {'csv', 'xlsx'}
+
+def allowed_file(filename):
+    """Checks whether the uploaded file format is supported."""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def load_uploaded_dataframe(file_path):
+    """Load uploaded file into a DataFrame."""
+    if file_path.lower().endswith('.xlsx'):
+        return pd.read_excel(file_path)
+
+    try:
+        return pd.read_csv(file_path, encoding='utf-8')
+    except UnicodeDecodeError:
+        return pd.read_csv(file_path, encoding='ISO-8859-1')
+
+def build_dataset_summary(file_path, filename):
+    """Build a lightweight summary for the UI."""
+    df = load_uploaded_dataframe(file_path)
+    numeric_columns = df.select_dtypes(include='number').columns.tolist()
+    missing_values = int(df.isna().sum().sum())
+
+    preview_columns = []
+    for column in df.columns[:6]:
+        preview_columns.append({
+            'name': column,
+            'dtype': str(df[column].dtype)
+        })
+
+    return {
+        'filename': filename,
+        'rows': int(len(df)),
+        'columns': int(len(df.columns)),
+        'numeric_columns': int(len(numeric_columns)),
+        'missing_values': missing_values,
+        'preview_columns': preview_columns
+    }
 
 @app.route('/')
 def home():
@@ -34,17 +69,20 @@ def upload_file():
     if file.filename == '':
         return jsonify({'error': 'No selected file'}), 400
         
-    if file and (file.filename.endswith('.csv') or file.filename.endswith('.xlsx')):
+    if file and allowed_file(file.filename):
         filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        unique_filename = f"{uuid.uuid4().hex}_{filename}"
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
         file.save(filepath)
-        
-        # Set file to active context
-        session_state['active_file_path'] = filepath
-        
+
+        dataset_summary = build_dataset_summary(filepath, filename)
+        session['active_file_path'] = filepath
+        session['dataset_summary'] = dataset_summary
+
         return jsonify({
             'message': f'File {filename} successfully uploaded and loaded into context!',
-            'filename': filename
+            'filename': filename,
+            'dataset_summary': dataset_summary
         })
     else:
         return jsonify({'error': 'Invalid file format. Please upload a CSV or XLSX.'}), 400
@@ -54,8 +92,9 @@ def chat():
     """Handles natural language queries sent from the UI."""
     data = request.get_json()
     user_message = data.get('message', '')
-    
-    if not session_state['active_file_path']:
+
+    active_file_path = session.get('active_file_path')
+    if not active_file_path:
         return jsonify({'response': 'Please upload a dataset first before asking questions!'})
         
     if not user_message:
@@ -63,7 +102,7 @@ def chat():
 
     try:
         # Pass the dataset path and question to the Agent
-        answer = query_dataset(user_message, session_state['active_file_path'])
+        answer = query_dataset(user_message, active_file_path)
         
         # Check if the AI generated a chart
         chart_url = None
@@ -77,7 +116,8 @@ def chat():
 
         return jsonify({
             'response': answer,
-            'chart_url': chart_url
+            'chart_url': chart_url,
+            'dataset_summary': session.get('dataset_summary')
         })
         
     except Exception as e:
