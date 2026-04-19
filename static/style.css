@@ -37,7 +37,7 @@ body {
     height: 100%;
 }
 
-/* Sidebar Styles - Glassmorphism */
+/* ─── Sidebar ─── */
 .sidebar {
     width: 300px;
     background: var(--sidebar-glass);
@@ -55,14 +55,8 @@ body {
     overscroll-behavior: contain;
 }
 
-.sidebar::-webkit-scrollbar {
-    width: 6px;
-}
-
-.sidebar::-webkit-scrollbar-track {
-    background: transparent;
-}
-
+.sidebar::-webkit-scrollbar { width: 6px; }
+.sidebar::-webkit-scrollbar-track { background: transparent; }
 .sidebar::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.14);
     border-radius: 999px;
@@ -93,6 +87,7 @@ body {
     margin-bottom: 10px;
 }
 
+/* ─── Upload Card ─── */
 .upload-section {
     display: flex;
     flex-direction: column;
@@ -142,17 +137,7 @@ body {
     font-weight: 500;
 }
 
-.examples-section {
-    font-size: 0.95rem;
-}
-
-.capability-section {
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--border-color);
-    padding: 18px;
-    border-radius: 16px;
-}
-
+/* ─── Dataset Overview ─── */
 .dataset-section {
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid var(--border-color);
@@ -192,9 +177,7 @@ body {
     letter-spacing: 0.08em;
 }
 
-.dataset-columns {
-    margin-top: 16px;
-}
+.dataset-columns { margin-top: 16px; }
 
 .dataset-columns-list {
     display: grid;
@@ -225,6 +208,14 @@ body {
     text-transform: uppercase;
 }
 
+/* ─── Capability / Examples ─── */
+.capability-section {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    padding: 18px;
+    border-radius: 16px;
+}
+
 .capability-section h3 {
     font-size: 0.85rem;
     text-transform: uppercase;
@@ -248,6 +239,8 @@ body {
     color: var(--text-primary);
     font-size: 0.92rem;
 }
+
+.examples-section { font-size: 0.95rem; }
 
 .examples-section h3 {
     font-size: 0.85rem;
@@ -283,7 +276,7 @@ body {
     border-color: rgba(255, 255, 255, 0.2);
 }
 
-/* Chat Area Styles */
+/* ─── Chat Area ─── */
 .chat-container {
     flex-grow: 1;
     display: flex;
@@ -292,9 +285,7 @@ body {
     position: relative;
 }
 
-.hero-panel {
-    padding: 34px 40px 10px;
-}
+.hero-panel { padding: 34px 40px 10px; }
 
 .hero-panel h1 {
     font-size: clamp(2rem, 4vw, 3.25rem);
@@ -334,18 +325,14 @@ body {
     scroll-behavior: smooth;
 }
 
-/* Scrollbar customization */
-.chat-box::-webkit-scrollbar {
-    width: 6px;
-}
-.chat-box::-webkit-scrollbar-track {
-    background: transparent;
-}
+.chat-box::-webkit-scrollbar { width: 6px; }
+.chat-box::-webkit-scrollbar-track { background: transparent; }
 .chat-box::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.1);
     border-radius: 10px;
 }
 
+/* ─── Messages ─── */
 .message {
     display: flex;
     gap: 15px;
@@ -414,21 +401,53 @@ body {
     backdrop-filter: blur(10px);
 }
 
-/* Chart img handling */
+/* ─── Typing Indicator ─── */
+.typing-indicator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 16px 20px;
+}
+
+.typing-indicator span {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #10b981;
+    animation: typingBounce 1.4s infinite ease-in-out both;
+}
+
+.typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+.typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0s; }
+
+@keyframes typingBounce {
+    0%, 80%, 100% { transform: scale(0.5); opacity: 0.4; }
+    40% { transform: scale(1); opacity: 1; }
+}
+
+/* ─── Error bubble variant ─── */
+.bubble.error-bubble {
+    border-color: rgba(239, 68, 68, 0.3);
+    background: rgba(127, 29, 29, 0.25);
+}
+
+/* ─── Chart Img ─── */
 .chat-chart {
     max-width: 100%;
     margin-top: 15px;
-    border-radius: 8px;
+    border-radius: 12px;
     border: 1px solid var(--border-color);
     box-shadow: var(--shadow-sm);
     transition: transform 0.3s ease;
+    background: #1e293b;
 }
 
 .chat-chart:hover {
     transform: scale(1.02);
 }
 
-/* Input Area Styles */
+/* ─── Input Area ─── */
 .input-area {
     padding: 25px 40px;
     background: var(--sidebar-glass);
@@ -452,9 +471,7 @@ body {
     box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
 }
 
-.input-area input::placeholder {
-    color: var(--text-secondary);
-}
+.input-area input::placeholder { color: var(--text-secondary); }
 
 .input-area input:focus {
     border-color: #10b981;
@@ -493,6 +510,7 @@ body {
     box-shadow: none;
 }
 
+/* ─── Responsive ─── */
 @media (max-width: 960px) {
     body {
         height: auto;
@@ -500,9 +518,7 @@ body {
         overflow: auto;
     }
 
-    .app-container {
-        flex-direction: column;
-    }
+    .app-container { flex-direction: column; }
 
     .sidebar {
         width: 100%;
@@ -513,19 +529,8 @@ body {
         border-bottom: 1px solid var(--border-color);
     }
 
-    .hero-panel {
-        padding: 26px 24px 8px;
-    }
-
-    .chat-box {
-        padding: 18px 24px 24px;
-    }
-
-    .input-area {
-        padding: 18px 24px 24px;
-    }
-
-    .message {
-        max-width: 100%;
-    }
+    .hero-panel { padding: 26px 24px 8px; }
+    .chat-box { padding: 18px 24px 24px; }
+    .input-area { padding: 18px 24px 24px; }
+    .message { max-width: 100%; }
 }

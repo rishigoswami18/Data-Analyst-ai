@@ -9,10 +9,12 @@ const chatInput = document.getElementById('chat-input');
 const sendBtn = document.getElementById('send-btn');
 const chatBox = document.getElementById('chat-box');
 
-// 1. File Upload Logic
-uploadBtn.addEventListener('click', () => {
-    fileInput.click();
-});
+// Conversation history buffer (last 6 exchanges for follow-up context)
+let conversationHistory = [];
+const MAX_HISTORY = 6;
+
+// ─── 1. File Upload ───
+uploadBtn.addEventListener('click', () => fileInput.click());
 
 fileInput.addEventListener('change', async () => {
     const file = fileInput.files[0];
@@ -35,36 +37,39 @@ fileInput.addEventListener('change', async () => {
             statusMsg.textContent = "Dataset ready for analysis";
             statusMsg.style.color = "#4ade80";
             renderDatasetSummary(data.dataset_summary);
-            
-            // Enable chat
+
             chatInput.disabled = false;
             sendBtn.disabled = false;
-            
-            appendSystemMessage(`Dataset loaded: ${data.filename}. You can now ask for summaries, comparisons, trends, or charts.`);
+
+            // Reset history when new dataset is uploaded
+            conversationHistory = [];
+
+            appendSystemMessage(`Dataset loaded: **${data.filename}**\n${data.dataset_summary.rows} rows · ${data.dataset_summary.columns} columns · ${data.dataset_summary.numeric_columns} numeric fields\n\nYou can now ask for summaries, comparisons, trends, or charts.`);
         } else {
             statusMsg.textContent = data.error;
-            statusMsg.style.color = "#ef4444"; // red
+            statusMsg.style.color = "#ef4444";
         }
     } catch (err) {
-        statusMsg.textContent = "Upload failed.";
+        statusMsg.textContent = "Upload failed. Please try again.";
+        statusMsg.style.color = "#ef4444";
     }
 });
 
 
-// 2. Chat Logic
+// ─── 2. Chat Logic ───
 sendBtn.addEventListener('click', sendQuery);
 chatInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') sendQuery();
 });
 
-// Clickable examples
+// Clickable example prompts
 document.querySelectorAll('.examples-section li').forEach(li => {
     li.addEventListener('click', () => {
-        if(!chatInput.disabled) {
+        if (!chatInput.disabled) {
             chatInput.value = li.textContent.replace(/"/g, '');
             sendQuery();
         } else {
-            alert("Upload a dataset first to activate analysis.");
+            appendSystemMessage("Please upload a dataset first to enable analysis.", null, true);
         }
     });
 });
@@ -73,44 +78,54 @@ async function sendQuery() {
     const text = chatInput.value.trim();
     if (!text) return;
 
-    // Display user message
     appendUserMessage(text);
     chatInput.value = "";
-    
-    // Temporarily disable input
     chatInput.disabled = true;
     sendBtn.disabled = true;
 
-    // Add loading message
-    const loadingId = appendSystemMessage("Working on your question...");
+    // Show animated typing indicator
+    const loadingId = showTypingIndicator();
 
     try {
         const response = await fetch('/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: text })
+            body: JSON.stringify({
+                message: text,
+                history: conversationHistory
+            })
         });
-        
+
         const data = await response.json();
-        
-        // Remove loading
-        document.getElementById(loadingId).remove();
-        
+        removeTypingIndicator(loadingId);
+
         if (response.ok) {
             appendSystemMessage(data.response, data.chart_url);
+
+            // Update conversation history
+            conversationHistory.push(
+                { role: "user", content: text },
+                { role: "assistant", content: data.response }
+            );
+            // Keep history buffer trimmed
+            if (conversationHistory.length > MAX_HISTORY * 2) {
+                conversationHistory = conversationHistory.slice(-MAX_HISTORY * 2);
+            }
         } else {
-            appendSystemMessage(data.response || "Server Error");
+            appendSystemMessage(data.response || "An unexpected server error occurred.", null, true);
         }
     } catch (err) {
-        document.getElementById(loadingId).remove();
-        appendSystemMessage("Connection error.");
+        removeTypingIndicator(loadingId);
+        appendSystemMessage("Connection error. The server may be restarting. Please try again in a moment.", null, true);
     }
 
-    // Re-enable input
     chatInput.disabled = false;
     sendBtn.disabled = false;
     chatInput.focus();
 }
+
+
+// ─── 3. Message Builders ───
 
 function appendUserMessage(text) {
     const div = document.createElement('div');
@@ -123,39 +138,61 @@ function appendUserMessage(text) {
     scrollToBottom();
 }
 
-function appendSystemMessage(text, chartUrl = null) {
+function appendSystemMessage(text, chartUrl = null, isError = false) {
     const id = "msg-" + Date.now();
     const div = document.createElement('div');
     div.id = id;
     div.className = "message system-message";
-    
-    let bubbleContent = escapeHtml(text);
-    if(chartUrl) {
-        // Append an image tag bypassing escaping for the img construct
-        // Add cache busting query to prevent browser from showing old chart
+
+    // Format text: bold markdown-like (**text**)
+    let formatted = escapeHtml(text).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
+    if (chartUrl) {
         const cb = "?cb=" + Date.now();
-        bubbleContent += `<br><img src="${chartUrl}${cb}" class="chat-chart" alt="Generated Chart">`;
+        formatted += `<br><img src="${chartUrl}${cb}" class="chat-chart" alt="Generated Chart">`;
     }
-    
-    // Use innerHTML because we might inject an unescaped img tag immediately after escaped text
+
     div.innerHTML = `
         <div class="avatar">AG</div>
-        <div class="bubble"></div>
+        <div class="bubble${isError ? ' error-bubble' : ''}"></div>
     `;
-    div.querySelector('.bubble').innerHTML = bubbleContent;
-    
+    div.querySelector('.bubble').innerHTML = formatted;
+
     chatBox.appendChild(div);
-    
-    // If it has an image, scroll after image loads
-    if(chartUrl) {
+
+    if (chartUrl) {
         const img = div.querySelector('.chat-chart');
         img.onload = scrollToBottom;
     } else {
         scrollToBottom();
     }
-    
+
     return id;
 }
+
+function showTypingIndicator() {
+    const id = "typing-" + Date.now();
+    const div = document.createElement('div');
+    div.id = id;
+    div.className = "message system-message";
+    div.innerHTML = `
+        <div class="avatar">AG</div>
+        <div class="typing-indicator">
+            <span></span><span></span><span></span>
+        </div>
+    `;
+    chatBox.appendChild(div);
+    scrollToBottom();
+    return id;
+}
+
+function removeTypingIndicator(id) {
+    const el = document.getElementById(id);
+    if (el) el.remove();
+}
+
+
+// ─── 4. Utilities ───
 
 function scrollToBottom() {
     chatBox.scrollTop = chatBox.scrollHeight;
@@ -178,7 +215,7 @@ function renderDatasetSummary(summary) {
     datasetMetrics.innerHTML = `
         <div class="dataset-metric-card">
             <span class="metric-label">Rows</span>
-            <strong>${summary.rows}</strong>
+            <strong>${summary.rows.toLocaleString()}</strong>
         </div>
         <div class="dataset-metric-card">
             <span class="metric-label">Columns</span>
@@ -190,7 +227,7 @@ function renderDatasetSummary(summary) {
         </div>
         <div class="dataset-metric-card">
             <span class="metric-label">Missing</span>
-            <strong>${summary.missing_values}</strong>
+            <strong>${summary.missing_values.toLocaleString()}</strong>
         </div>
     `;
 

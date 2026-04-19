@@ -92,6 +92,7 @@ def chat():
     """Handles natural language queries sent from the UI."""
     data = request.get_json()
     user_message = data.get('message', '')
+    history = data.get('history', [])
 
     active_file_path = session.get('active_file_path')
     if not active_file_path:
@@ -101,8 +102,8 @@ def chat():
         return jsonify({'response': 'Please enter a valid question.'})
 
     try:
-        # Pass the dataset path and question to the Agent
-        answer = query_dataset(user_message, active_file_path)
+        # Pass the dataset path, question, and conversation history to the Agent
+        answer = query_dataset(user_message, active_file_path, history)
         
         # Check if the AI generated a chart
         chart_url = None

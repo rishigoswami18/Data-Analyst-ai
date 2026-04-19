@@ -85,13 +85,24 @@ def get_dataframe_summary(file_path):
     except Exception as e:
         return None, str(e), None, None, None
 
-def query_dataset(user_query, file_path):
+def query_dataset(user_query, file_path, history=None):
     """
     Core function that translates user query -> pandas code -> executes it -> returns final answer.
+    Supports conversation history for follow-up questions.
     """
     df, columns, head, dtypes, profile = get_dataframe_summary(file_path)
     if df is None:
         return "Error loading file: " + columns
+
+    # Build conversation context from history
+    history_context = ""
+    if history:
+        recent = history[-6:]  # last 3 exchanges
+        lines = []
+        for msg in recent:
+            role = "User" if msg.get("role") == "user" else "Assistant"
+            lines.append(f"{role}: {msg.get('content', '')[:200]}")
+        history_context = "\n".join(lines)
 
     system_prompt = f"""
     You are an experienced data analyst.
@@ -111,6 +122,8 @@ def query_dataset(user_query, file_path):
     Sample data (first 3 rows):
     {head}
 
+    {f"Recent conversation context (use this to understand follow-up questions):" + chr(10) + history_context if history_context else ""}
+
     User request:
     "{user_query}"
 
@@ -122,14 +135,15 @@ def query_dataset(user_query, file_path):
     5. Do NOT include ANY text outside of the python code block. Only return the executable code.
     6. Ensure you handle missing values or basic string conversions if needed.
     7. CRITICAL: If you use pandas `.dt.to_period()` for dates, you MUST convert that column to strings (e.g., `.astype(str)`) BEFORE plotting with matplotlib. Matplotlib cannot plot 'Period' objects and will crash.
-    8. Do not fabricate metrics, assumptions, or columns.
-    9. Do not import restricted modules or access files, networks, or the OS.
-    10. Return executable Python only. No markdown and no explanation outside the code.
+    8. CRITICAL: For ALL matplotlib charts, use a dark theme: call plt.style.use('dark_background') and set facecolor='#1e293b' on both figure and axes for seamless integration with the dark UI.
+    9. Do not fabricate metrics, assumptions, or columns.
+    10. Do not import restricted modules or access files, networks, or the OS.
+    11. Return executable Python only. No markdown and no explanation outside the code.
     """
 
     try:
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile", # Groq model
+            model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "system", "content": system_prompt},
             ],
@@ -165,3 +179,4 @@ def query_dataset(user_query, file_path):
 
     except Exception as e:
         return f"AI Error: {str(e)}"
+
