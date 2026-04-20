@@ -23,8 +23,14 @@
     font-family: 'Outfit', sans-serif;
 }
 
+[hidden] {
+    display: none !important;
+}
+
 body {
-    background: linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-darker) 100%);
+    background:
+        radial-gradient(circle at top left, rgba(17, 94, 89, 0.18), transparent 26%),
+        linear-gradient(180deg, #09111f 0%, #0b1324 100%);
     color: var(--text-primary);
     min-height: 100vh;
     display: flex;
@@ -35,55 +41,97 @@ body {
     min-height: 100vh;
     display: grid;
     place-items: center;
-    padding: 32px;
+    padding: 40px 28px;
     background:
-        radial-gradient(circle at top left, rgba(16, 185, 129, 0.2), transparent 35%),
-        radial-gradient(circle at bottom right, rgba(59, 130, 246, 0.2), transparent 30%);
+        radial-gradient(circle at top left, rgba(15, 118, 110, 0.16), transparent 32%),
+        radial-gradient(circle at bottom right, rgba(30, 64, 175, 0.14), transparent 28%);
 }
 
 .auth-panel {
-    width: min(980px, 100%);
+    width: min(1040px, 100%);
     display: grid;
-    grid-template-columns: 1.15fr 0.85fr;
-    gap: 28px;
+    grid-template-columns: minmax(320px, 1.05fr) minmax(340px, 420px);
+    gap: 32px;
     align-items: stretch;
 }
 
 .auth-copy,
 .auth-card,
 .account-section {
-    background: rgba(15, 23, 42, 0.7);
-    border: 1px solid var(--border-color);
-    box-shadow: var(--shadow-lg);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background: rgba(13, 20, 36, 0.86);
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    box-shadow: 0 24px 60px rgba(2, 6, 23, 0.32);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
 }
 
 .auth-copy {
-    border-radius: 28px;
-    padding: 42px;
+    border-radius: 24px;
+    padding: 48px;
     display: flex;
     flex-direction: column;
     justify-content: center;
 }
 
 .auth-copy h1 {
-    font-size: clamp(2.2rem, 5vw, 4rem);
-    line-height: 1;
-    letter-spacing: -0.05em;
-    margin-bottom: 18px;
+    font-size: clamp(2.2rem, 4vw, 3.4rem);
+    line-height: 1.05;
+    letter-spacing: -0.045em;
+    max-width: 10ch;
+    margin-bottom: 16px;
 }
 
 .auth-copy p {
     font-size: 1rem;
-    line-height: 1.8;
+    line-height: 1.75;
     color: var(--text-secondary);
-    max-width: 48ch;
+    max-width: 46ch;
+}
+
+.auth-points {
+    display: grid;
+    gap: 14px;
+    margin-top: 28px;
+}
+
+.auth-point {
+    display: grid;
+    gap: 6px;
+    padding: 16px 18px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.auth-point strong {
+    font-size: 0.98rem;
+}
+
+.auth-point span {
+    color: var(--text-secondary);
+    line-height: 1.6;
+    font-size: 0.92rem;
 }
 
 .auth-card {
     border-radius: 24px;
-    padding: 24px;
+    padding: 28px;
+}
+
+.auth-card-header {
+    margin-bottom: 20px;
+}
+
+.auth-card-header h2 {
+    font-size: 1.45rem;
+    letter-spacing: -0.03em;
+}
+
+.auth-card-header p {
+    margin-top: 8px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    font-size: 0.94rem;
 }
 
 .auth-tabs {
@@ -95,8 +143,8 @@ body {
 
 .auth-tab,
 .secondary-btn {
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    background: rgba(255, 255, 255, 0.03);
     color: var(--text-primary);
     border-radius: 12px;
     padding: 12px 14px;
@@ -105,9 +153,9 @@ body {
 }
 
 .auth-tab.active {
-    background: rgba(16, 185, 129, 0.18);
-    border-color: rgba(16, 185, 129, 0.4);
-    color: #d1fae5;
+    background: rgba(15, 118, 110, 0.22);
+    border-color: rgba(45, 212, 191, 0.34);
+    color: #ecfeff;
 }
 
 .auth-form {
@@ -126,19 +174,23 @@ body {
     width: 100%;
     padding: 14px 16px;
     border-radius: 14px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    background: rgba(2, 6, 23, 0.65);
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    background: rgba(7, 12, 24, 0.9);
     color: var(--text-primary);
     outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 
 .auth-form input:focus {
-    border-color: rgba(16, 185, 129, 0.7);
-    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18);
+    border-color: rgba(45, 212, 191, 0.55);
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.16);
+    background: rgba(10, 16, 30, 1);
 }
 
 .auth-submit {
-    margin-top: 4px;
+    margin-top: 6px;
+    min-height: 50px;
+    border-radius: 14px;
 }
 
 .app-container {
@@ -260,10 +312,10 @@ body {
     color: white;
     border: none;
     padding: 12px 15px;
-    border-radius: 8px;
+    border-radius: 10px;
     cursor: pointer;
     font-weight: 600;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.02em;
     transition: all 0.3s ease;
     box-shadow: var(--shadow-sm);
 }
@@ -672,11 +724,17 @@ body {
 
     .auth-panel {
         grid-template-columns: 1fr;
+        gap: 18px;
     }
 
     .auth-copy,
     .auth-card {
         padding: 24px;
+    }
+
+    .auth-copy h1 {
+        max-width: none;
+        font-size: clamp(2rem, 8vw, 2.8rem);
     }
 
     .app-container {
