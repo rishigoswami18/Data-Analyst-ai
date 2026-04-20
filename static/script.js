@@ -1,3 +1,14 @@
+const authShell = document.getElementById('auth-shell');
+const appContainer = document.getElementById('app-container');
+const authStatus = document.getElementById('auth-status');
+const showLoginBtn = document.getElementById('show-login-btn');
+const showSignupBtn = document.getElementById('show-signup-btn');
+const loginForm = document.getElementById('login-form');
+const signupForm = document.getElementById('signup-form');
+const logoutBtn = document.getElementById('logout-btn');
+const accountName = document.getElementById('account-name');
+const accountEmail = document.getElementById('account-email');
+
 const uploadBtn = document.getElementById('upload-btn');
 const fileInput = document.getElementById('file-input');
 const statusMsg = document.getElementById('upload-status');
@@ -9,19 +20,21 @@ const chatInput = document.getElementById('chat-input');
 const sendBtn = document.getElementById('send-btn');
 const chatBox = document.getElementById('chat-box');
 
-// Conversation history buffer (last 6 exchanges for follow-up context)
 let conversationHistory = [];
 const MAX_HISTORY = 6;
 
-// ─── 1. File Upload ───
+setAuthMode('login');
+bindAuthEvents();
+initializeAuthState();
+
 uploadBtn.addEventListener('click', () => fileInput.click());
 
 fileInput.addEventListener('change', async () => {
     const file = fileInput.files[0];
     if (!file) return;
 
-    statusMsg.textContent = "Uploading dataset...";
-    statusMsg.style.color = "#ccc";
+    statusMsg.textContent = 'Uploading dataset...';
+    statusMsg.style.color = '#ccc';
 
     const formData = new FormData();
     formData.append('file', file);
@@ -34,42 +47,37 @@ fileInput.addEventListener('change', async () => {
         const data = await response.json();
 
         if (response.ok) {
-            statusMsg.textContent = "Dataset ready for analysis";
-            statusMsg.style.color = "#4ade80";
+            statusMsg.textContent = 'Dataset ready for analysis';
+            statusMsg.style.color = '#4ade80';
             renderDatasetSummary(data.dataset_summary);
 
             chatInput.disabled = false;
             sendBtn.disabled = false;
-
-            // Reset history when new dataset is uploaded
             conversationHistory = [];
 
             appendSystemMessage(`Dataset loaded: **${data.filename}**\n${data.dataset_summary.rows} rows · ${data.dataset_summary.columns} columns · ${data.dataset_summary.numeric_columns} numeric fields\n\nYou can now ask for summaries, comparisons, trends, or charts.`);
         } else {
-            statusMsg.textContent = data.error;
-            statusMsg.style.color = "#ef4444";
+            statusMsg.textContent = data.error || 'Upload failed.';
+            statusMsg.style.color = '#ef4444';
         }
-    } catch (err) {
-        statusMsg.textContent = "Upload failed. Please try again.";
-        statusMsg.style.color = "#ef4444";
+    } catch (error) {
+        statusMsg.textContent = 'Upload failed. Please try again.';
+        statusMsg.style.color = '#ef4444';
     }
 });
 
-
-// ─── 2. Chat Logic ───
 sendBtn.addEventListener('click', sendQuery);
-chatInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') sendQuery();
+chatInput.addEventListener('keypress', (event) => {
+    if (event.key === 'Enter') sendQuery();
 });
 
-// Clickable example prompts
-document.querySelectorAll('.examples-section li').forEach(li => {
-    li.addEventListener('click', () => {
+document.querySelectorAll('.examples-section li').forEach((item) => {
+    item.addEventListener('click', () => {
         if (!chatInput.disabled) {
-            chatInput.value = li.textContent.replace(/"/g, '');
+            chatInput.value = item.textContent.replace(/"/g, '');
             sendQuery();
         } else {
-            appendSystemMessage("Please upload a dataset first to enable analysis.", null, true);
+            appendSystemMessage('Please upload a dataset first to enable analysis.', null, true);
         }
     });
 });
@@ -79,11 +87,10 @@ async function sendQuery() {
     if (!text) return;
 
     appendUserMessage(text);
-    chatInput.value = "";
+    chatInput.value = '';
     chatInput.disabled = true;
     sendBtn.disabled = true;
 
-    // Show animated typing indicator
     const loadingId = showTypingIndicator();
 
     try {
@@ -101,35 +108,143 @@ async function sendQuery() {
 
         if (response.ok) {
             appendSystemMessage(data.response, data.chart_url);
-
-            // Update conversation history
             conversationHistory.push(
-                { role: "user", content: text },
-                { role: "assistant", content: data.response }
+                { role: 'user', content: text },
+                { role: 'assistant', content: data.response }
             );
-            // Keep history buffer trimmed
+
             if (conversationHistory.length > MAX_HISTORY * 2) {
                 conversationHistory = conversationHistory.slice(-MAX_HISTORY * 2);
             }
+        } else if (response.status === 401) {
+            resetWorkspace();
+            renderAuthState(null);
+            setAuthMode('login');
+            setAuthMessage(data.error || 'Please log in to continue.', true);
         } else {
-            appendSystemMessage(data.response || "An unexpected server error occurred.", null, true);
+            appendSystemMessage(data.response || data.error || 'An unexpected server error occurred.', null, true);
         }
-    } catch (err) {
+    } catch (error) {
         removeTypingIndicator(loadingId);
-        appendSystemMessage("Connection error. The server may be restarting. Please try again in a moment.", null, true);
+        appendSystemMessage('Connection error. The server may be restarting. Please try again in a moment.', null, true);
     }
 
-    chatInput.disabled = false;
-    sendBtn.disabled = false;
-    chatInput.focus();
+    if (!appContainer.hidden) {
+        chatInput.disabled = false;
+        sendBtn.disabled = false;
+        chatInput.focus();
+    }
 }
 
+function bindAuthEvents() {
+    showLoginBtn.addEventListener('click', () => setAuthMode('login'));
+    showSignupBtn.addEventListener('click', () => setAuthMode('signup'));
 
-// ─── 3. Message Builders ───
+    loginForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        await submitAuth('/login', {
+            email: document.getElementById('login-email').value.trim(),
+            password: document.getElementById('login-password').value
+        });
+    });
+
+    signupForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        await submitAuth('/signup', {
+            name: document.getElementById('signup-name').value.trim(),
+            email: document.getElementById('signup-email').value.trim(),
+            password: document.getElementById('signup-password').value
+        });
+    });
+
+    logoutBtn.addEventListener('click', async () => {
+        try {
+            await fetch('/logout', { method: 'POST' });
+        } finally {
+            resetWorkspace();
+            renderAuthState(null);
+            setAuthMode('login');
+            setAuthMessage('Logged out successfully.', false);
+        }
+    });
+}
+
+async function initializeAuthState() {
+    try {
+        const response = await fetch('/auth/status');
+        const data = await response.json();
+
+        if (data.authenticated) {
+            renderAuthState(data.user);
+        } else {
+            renderAuthState(null);
+        }
+    } catch (error) {
+        renderAuthState(null);
+        setAuthMessage('Unable to check session state. Please refresh and try again.', true);
+    }
+}
+
+function setAuthMode(mode) {
+    const loginActive = mode === 'login';
+    showLoginBtn.classList.toggle('active', loginActive);
+    showSignupBtn.classList.toggle('active', !loginActive);
+    loginForm.hidden = !loginActive;
+    signupForm.hidden = loginActive;
+    setAuthMessage('');
+}
+
+async function submitAuth(url, payload) {
+    setAuthMessage(url === '/login' ? 'Signing you in...' : 'Creating your account...', false);
+
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+            setAuthMessage(data.error || 'Authentication failed.', true);
+            return;
+        }
+
+        resetWorkspace();
+        renderAuthState(data.user);
+        loginForm.reset();
+        signupForm.reset();
+        setAuthMessage('');
+    } catch (error) {
+        setAuthMessage('Authentication request failed. Please try again.', true);
+    }
+}
+
+function renderAuthState(user) {
+    const isAuthenticated = Boolean(user);
+    authShell.hidden = isAuthenticated;
+    appContainer.hidden = !isAuthenticated;
+
+    if (!isAuthenticated) {
+        accountName.textContent = '';
+        accountEmail.textContent = '';
+        chatInput.disabled = true;
+        sendBtn.disabled = true;
+        return;
+    }
+
+    accountName.textContent = user.name;
+    accountEmail.textContent = user.email;
+}
+
+function setAuthMessage(message, isError = false) {
+    authStatus.textContent = message;
+    authStatus.style.color = isError ? '#fca5a5' : '#86efac';
+}
 
 function appendUserMessage(text) {
     const div = document.createElement('div');
-    div.className = "message user-message";
+    div.className = 'message user-message';
     div.innerHTML = `
         <div class="avatar">You</div>
         <div class="bubble">${escapeHtml(text)}</div>
@@ -139,17 +254,16 @@ function appendUserMessage(text) {
 }
 
 function appendSystemMessage(text, chartUrl = null, isError = false) {
-    const id = "msg-" + Date.now();
+    const id = `msg-${Date.now()}`;
     const div = document.createElement('div');
     div.id = id;
-    div.className = "message system-message";
+    div.className = 'message system-message';
 
-    // Format text: bold markdown-like (**text**)
     let formatted = escapeHtml(text).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
 
     if (chartUrl) {
-        const cb = "?cb=" + Date.now();
-        formatted += `<br><img src="${chartUrl}${cb}" class="chat-chart" alt="Generated Chart">`;
+        const cacheBust = `?cb=${Date.now()}`;
+        formatted += `<br><img src="${chartUrl}${cacheBust}" class="chat-chart" alt="Generated Chart">`;
     }
 
     div.innerHTML = `
@@ -157,12 +271,11 @@ function appendSystemMessage(text, chartUrl = null, isError = false) {
         <div class="bubble${isError ? ' error-bubble' : ''}"></div>
     `;
     div.querySelector('.bubble').innerHTML = formatted;
-
     chatBox.appendChild(div);
 
     if (chartUrl) {
-        const img = div.querySelector('.chat-chart');
-        img.onload = scrollToBottom;
+        const image = div.querySelector('.chat-chart');
+        image.onload = scrollToBottom;
     } else {
         scrollToBottom();
     }
@@ -171,10 +284,10 @@ function appendSystemMessage(text, chartUrl = null, isError = false) {
 }
 
 function showTypingIndicator() {
-    const id = "typing-" + Date.now();
+    const id = `typing-${Date.now()}`;
     const div = document.createElement('div');
     div.id = id;
-    div.className = "message system-message";
+    div.className = 'message system-message';
     div.innerHTML = `
         <div class="avatar">AG</div>
         <div class="typing-indicator">
@@ -187,12 +300,27 @@ function showTypingIndicator() {
 }
 
 function removeTypingIndicator(id) {
-    const el = document.getElementById(id);
-    if (el) el.remove();
+    const element = document.getElementById(id);
+    if (element) element.remove();
 }
 
-
-// ─── 4. Utilities ───
+function resetWorkspace() {
+    conversationHistory = [];
+    datasetSection.hidden = true;
+    datasetMetrics.innerHTML = '';
+    datasetColumnsList.innerHTML = '';
+    statusMsg.textContent = '';
+    fileInput.value = '';
+    chatInput.value = '';
+    chatInput.disabled = true;
+    sendBtn.disabled = true;
+    chatBox.innerHTML = `
+        <div class="message system-message">
+            <div class="avatar">AG</div>
+            <div class="bubble">Welcome. Upload a dataset to begin, and then ask questions about trends, summaries, comparisons, or charts.</div>
+        </div>
+    `;
+}
 
 function scrollToBottom() {
     chatBox.scrollTop = chatBox.scrollHeight;
@@ -200,18 +328,17 @@ function scrollToBottom() {
 
 function escapeHtml(unsafe) {
     return unsafe
-         .replace(/&/g, "&amp;")
-         .replace(/</g, "&lt;")
-         .replace(/>/g, "&gt;")
-         .replace(/"/g, "&quot;")
-         .replace(/'/g, "&#039;");
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }
 
 function renderDatasetSummary(summary) {
     if (!summary) return;
 
     datasetSection.hidden = false;
-
     datasetMetrics.innerHTML = `
         <div class="dataset-metric-card">
             <span class="metric-label">Rows</span>
@@ -232,7 +359,7 @@ function renderDatasetSummary(summary) {
     `;
 
     datasetColumnsList.innerHTML = summary.preview_columns
-        .map(column => `
+        .map((column) => `
             <div class="dataset-column-chip">
                 <span>${escapeHtml(column.name)}</span>
                 <small>${escapeHtml(column.dtype)}</small>

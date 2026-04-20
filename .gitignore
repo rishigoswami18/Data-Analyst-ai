@@ -12,6 +12,7 @@ __pycache__/
 # Uploads and temporary data
 uploads/*
 !uploads/.gitkeep
+users.db
 
 # Generated dynamic charts 
 static/charts/*

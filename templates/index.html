@@ -7,13 +7,70 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <div class="app-container">
+    <div class="auth-shell" id="auth-shell">
+        <section class="auth-panel">
+            <div class="auth-copy">
+                <span class="eyebrow">Secure Workspace Access</span>
+                <h1>Login or create an account</h1>
+                <p>Authentication now protects dataset uploads and chat sessions, so each user gets a private workspace before analysis begins.</p>
+            </div>
+
+            <div class="auth-card">
+                <div class="auth-tabs">
+                    <button id="show-login-btn" class="auth-tab active" type="button">Login</button>
+                    <button id="show-signup-btn" class="auth-tab" type="button">Sign Up</button>
+                </div>
+
+                <form id="login-form" class="auth-form">
+                    <label>
+                        <span>Email</span>
+                        <input type="email" id="login-email" placeholder="you@example.com" autocomplete="email" required>
+                    </label>
+                    <label>
+                        <span>Password</span>
+                        <input type="password" id="login-password" placeholder="Enter your password" autocomplete="current-password" required>
+                    </label>
+                    <button type="submit" class="primary-btn auth-submit">Login</button>
+                </form>
+
+                <form id="signup-form" class="auth-form" hidden>
+                    <label>
+                        <span>Name</span>
+                        <input type="text" id="signup-name" placeholder="Your name" autocomplete="name" required>
+                    </label>
+                    <label>
+                        <span>Email</span>
+                        <input type="email" id="signup-email" placeholder="you@example.com" autocomplete="email" required>
+                    </label>
+                    <label>
+                        <span>Password</span>
+                        <input type="password" id="signup-password" placeholder="At least 6 characters" autocomplete="new-password" required>
+                    </label>
+                    <button type="submit" class="primary-btn auth-submit">Create Account</button>
+                </form>
+
+                <div id="auth-status" class="status-msg"></div>
+            </div>
+        </section>
+    </div>
+
+    <div class="app-container" id="app-container" hidden>
         <aside class="sidebar">
             <div class="sidebar-header">
                 <span class="eyebrow">AI-Powered Data Analysis</span>
                 <h2>Data Analysis Assistant</h2>
                 <p>Upload a dataset and explore trends, KPIs, and business insights through natural language questions.</p>
             </div>
+
+            <div class="account-section">
+                <div>
+                    <span class="account-label">Signed in as</span>
+                    <strong id="account-name">{{ user.name if user else '' }}</strong>
+                    <p id="account-email">{{ user.email if user else '' }}</p>
+                </div>
+                <button id="logout-btn" class="secondary-btn" type="button">Logout</button>
+            </div>
+
             <div class="upload-section">
                 <p>Supports `.csv` and `.xlsx` files for KPI analysis, trend discovery, and chart generation.</p>
                 <input type="file" id="file-input" accept=".csv, .xlsx" style="display: none;">
