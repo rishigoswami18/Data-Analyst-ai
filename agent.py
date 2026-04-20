@@ -14,6 +14,16 @@ if not api_key:
     api_key = "dummy_replace_me"
 client = Groq(api_key=api_key)
 
+CHART_REQUEST_PATTERNS = [
+    r"\bchart\b",
+    r"\bgraph\b",
+    r"\bplot\b",
+    r"\bvisuali[sz]e\b",
+    r"\bvisualization\b",
+    r"\btrend\b",
+    r"\bdashboard\b",
+]
+
 def _build_dataset_profile(df):
     """Create a compact schema profile for grounded prompt construction."""
     numeric_columns = df.select_dtypes(include='number').columns.tolist()
@@ -63,6 +73,12 @@ def _validate_generated_code(code):
     ]
     return not any(re.search(pattern, code) for pattern in blocked_patterns)
 
+
+def _requires_chart(user_query):
+    """Allow charts only when the user explicitly asks for a visual output."""
+    query = user_query.lower()
+    return any(re.search(pattern, query) for pattern in CHART_REQUEST_PATTERNS)
+
 def get_dataframe_summary(file_path):
     """Loads CSV/Excel and returns basic info to inject into prompt."""
     try:
@@ -93,6 +109,8 @@ def query_dataset(user_query, file_path, history=None):
     df, columns, head, dtypes, profile = get_dataframe_summary(file_path)
     if df is None:
         return "Error loading file: " + columns
+
+    requires_chart = _requires_chart(user_query)
 
     # Build conversation context from history
     history_context = ""
@@ -131,7 +149,7 @@ def query_dataset(user_query, file_path, history=None):
     1. Write a python code snippet that uses pandas to answer the user's question.
     2. To return the final answer, use python's 'print()' function. The printed output is what the user will see.
     3. Make the printed output conversational and friendly (e.g., "The total revenue is $X").
-    4. If the question asks for a chart or trend, write code using matplotlib to save the chart absolutely EXACTLY to the path 'static/charts/trend.png', and then print "CHART_GENERATED: trend.png".
+    4. {"The user explicitly asked for a chart. Write code using matplotlib to save the chart absolutely EXACTLY to the path 'static/charts/trend.png', and then print 'CHART_GENERATED: trend.png'." if requires_chart else "Do NOT generate any chart, do NOT call matplotlib savefig, and do NOT print any CHART_GENERATED marker because the user did not ask for a visual output."}
     5. Do NOT include ANY text outside of the python code block. Only return the executable code.
     6. Ensure you handle missing values or basic string conversions if needed.
     7. CRITICAL: If you use pandas `.dt.to_period()` for dates, you MUST convert that column to strings (e.g., `.astype(str)`) BEFORE plotting with matplotlib. Matplotlib cannot plot 'Period' objects and will crash.
@@ -171,6 +189,9 @@ def query_dataset(user_query, file_path, history=None):
             
         sys.stdout = old_stdout
         result = redirected_output.getvalue().strip()
+
+        if not requires_chart and "CHART_GENERATED:" in result:
+            result = result.split("CHART_GENERATED:")[0].strip()
         
         if not result:
             result = "No output generated. Try rephrasing your question."
@@ -179,4 +200,3 @@ def query_dataset(user_query, file_path, history=None):
 
     except Exception as e:
         return f"AI Error: {str(e)}"
-

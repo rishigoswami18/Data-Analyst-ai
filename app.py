@@ -341,7 +341,9 @@ def chat():
         if 'CHART_GENERATED:' in answer:
             parts = answer.split('CHART_GENERATED:')
             chart_filename = parts[1].strip()
-            chart_url = url_for('static', filename=f'charts/{chart_filename}')
+            chart_path = CHARTS_FOLDER / chart_filename
+            cache_bust = int(chart_path.stat().st_mtime_ns) if chart_path.exists() else uuid.uuid4().hex
+            chart_url = f"{url_for('static', filename=f'charts/{chart_filename}')}?v={cache_bust}"
             answer = parts[0].strip() or 'Here is the chart you requested:'
 
         return jsonify({
