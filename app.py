@@ -132,8 +132,23 @@ def update_recent_datasets(dataset_summary):
     session['recent_datasets'] = [dataset_summary, *filtered][:MAX_RECENT_DATASETS]
 
 
+def clear_active_dataset():
+    """Remove the currently selected dataset from the session."""
+    session.pop('active_file_path', None)
+    session.pop('dataset_summary', None)
+
+
+def active_dataset_exists():
+    """Check whether the current dataset file still exists on disk."""
+    active_file_path = session.get('active_file_path')
+    return bool(active_file_path and Path(active_file_path).exists())
+
+
 def current_dataset_payload():
     """Expose the active dataset summary for the frontend."""
+    if session.get('active_file_path') and not active_dataset_exists():
+        clear_active_dataset()
+
     dataset_summary = session.get('dataset_summary')
     if not dataset_summary:
         return None
@@ -330,6 +345,13 @@ def chat():
     active_file_path = session.get('active_file_path')
     if not active_file_path:
         return jsonify({'error': 'Please upload a dataset first before asking questions!'}), 400
+
+    if not active_dataset_exists():
+        clear_active_dataset()
+        return jsonify({
+            'error': 'Your uploaded dataset is no longer available on the server. Please re-upload it to continue analysis.',
+            'dataset_missing': True,
+        }), 410
 
     if not user_message:
         return jsonify({'error': 'Please enter a valid question.'}), 400

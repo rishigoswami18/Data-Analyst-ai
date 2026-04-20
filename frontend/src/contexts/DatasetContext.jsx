@@ -22,7 +22,10 @@ function createWelcomeMessage(dataset) {
 async function parseJson(response) {
   const data = await response.json();
   if (!response.ok) {
-    throw new Error(data.error || 'Something went wrong.');
+    const error = new Error(data.error || 'Something went wrong.');
+    error.status = response.status;
+    error.payload = data;
+    throw error;
   }
   return data;
 }
@@ -35,6 +38,22 @@ export function DatasetProvider({ children }) {
   const [bootstrapping, setBootstrapping] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
+
+  function resetDatasetState(message = null) {
+    setCurrentDataset(null);
+    setMessages(
+      message
+        ? [
+            {
+              id: `system-${Date.now()}`,
+              role: 'assistant',
+              content: message,
+              chartUrl: null
+            }
+          ]
+        : createWelcomeMessage(null)
+    );
+  }
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -150,6 +169,11 @@ export function DatasetProvider({ children }) {
       return assistantMessage;
     } catch (error) {
       setMessages(messages);
+      if (error.status === 410 && error.payload?.dataset_missing) {
+        resetDatasetState(
+          'Your previous upload is no longer available on the server. Please upload the dataset again to continue analysis.'
+        );
+      }
       throw error;
     } finally {
       setChatLoading(false);
@@ -165,7 +189,8 @@ export function DatasetProvider({ children }) {
       uploading,
       chatLoading,
       uploadDataset,
-      sendMessage
+      sendMessage,
+      resetDatasetState
     }),
     [bootstrapping, chatLoading, currentDataset, messages, recentDatasets, uploading]
   );
