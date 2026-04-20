@@ -14,7 +14,6 @@ uploads/*
 !uploads/.gitkeep
 users.db
 frontend/node_modules/
-frontend/dist/
 
 # Generated dynamic charts 
 static/charts/*
