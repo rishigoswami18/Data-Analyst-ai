@@ -20,11 +20,21 @@ from werkzeug.utils import secure_filename
 
 from agent import query_dataset
 
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+except ImportError:  # pragma: no cover
+    psycopg2 = None
+    RealDictCursor = None
+
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_FOLDER = BASE_DIR / 'uploads'
 CHARTS_FOLDER = BASE_DIR / 'static' / 'charts'
 DATABASE_PATH = BASE_DIR / 'users.db'
 FRONTEND_DIST = BASE_DIR / 'frontend' / 'dist'
+DATABASE_URL = os.environ.get('DATABASE_URL')
+USE_POSTGRES = bool(DATABASE_URL)
+DB_INTEGRITY_ERRORS = (sqlite3.IntegrityError,) + ((psycopg2.IntegrityError,) if psycopg2 else ())
 
 app = Flask(__name__, static_folder='static', static_url_path='/static')
 app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'dev-secret-key')
@@ -36,17 +46,77 @@ CHARTS_FOLDER.mkdir(parents=True, exist_ok=True)
 ALLOWED_EXTENSIONS = {'csv', 'xlsx'}
 MAX_RECENT_DATASETS = 5
 
+if USE_POSTGRES and psycopg2 is None:
+    raise RuntimeError('DATABASE_URL is set but psycopg2-binary is not installed.')
+
+
+def normalize_database_url(database_url):
+    """Normalize database URLs for drivers that prefer postgresql://."""
+    if database_url and database_url.startswith('postgres://'):
+        return database_url.replace('postgres://', 'postgresql://', 1)
+    return database_url
+
 
 def get_db_connection():
-    """Create a SQLite connection for auth data."""
+    """Create a database connection for auth data."""
+    if USE_POSTGRES:
+        return psycopg2.connect(normalize_database_url(DATABASE_URL))
+
     connection = sqlite3.connect(DATABASE_PATH)
     connection.row_factory = sqlite3.Row
     return connection
 
 
+def fetch_one(query, params=()):
+    """Fetch a single row as a dictionary."""
+    with get_db_connection() as connection:
+        if USE_POSTGRES:
+            with connection.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute(query, params)
+                row = cursor.fetchone()
+                return dict(row) if row else None
+
+        cursor = connection.execute(query, params)
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
+def execute_write(query, params=(), returning=False):
+    """Run a write query and optionally return a dictionary result."""
+    with get_db_connection() as connection:
+        if USE_POSTGRES:
+            with connection.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute(query, params)
+                result = cursor.fetchone() if returning else None
+            connection.commit()
+            return dict(result) if result else None
+
+        cursor = connection.execute(query, params)
+        connection.commit()
+        if returning:
+            return {'id': cursor.lastrowid}
+        return None
+
+
 def init_db():
     """Create the users table if it does not exist."""
     with get_db_connection() as connection:
+        if USE_POSTGRES:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    '''
+                    CREATE TABLE IF NOT EXISTS users (
+                        id SERIAL PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        email TEXT NOT NULL UNIQUE,
+                        password_hash TEXT NOT NULL,
+                        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+                    )
+                    '''
+                )
+            connection.commit()
+            return
+
         connection.execute(
             '''
             CREATE TABLE IF NOT EXISTS users (
@@ -235,14 +305,20 @@ def signup():
         return jsonify({'error': 'Password must be at least 6 characters long.'}), 400
 
     try:
-        with get_db_connection() as connection:
-            cursor = connection.execute(
+        if USE_POSTGRES:
+            user = execute_write(
+                'INSERT INTO users (name, email, password_hash) VALUES (%s, %s, %s) RETURNING id',
+                (name, email, generate_password_hash(password)),
+                returning=True,
+            )
+        else:
+            user = execute_write(
                 'INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)',
                 (name, email, generate_password_hash(password)),
+                returning=True,
             )
-            connection.commit()
-            user_id = cursor.lastrowid
-    except sqlite3.IntegrityError:
+        user_id = user['id']
+    except DB_INTEGRITY_ERRORS:
         return jsonify({'error': 'An account with that email already exists.'}), 409
 
     session.clear()
@@ -263,11 +339,12 @@ def login():
     if not email or not password:
         return jsonify({'error': 'Email and password are required.'}), 400
 
-    with get_db_connection() as connection:
-        user = connection.execute(
-            'SELECT id, name, email, password_hash FROM users WHERE email = ?',
-            (email,),
-        ).fetchone()
+    query = (
+        'SELECT id, name, email, password_hash FROM users WHERE email = %s'
+        if USE_POSTGRES
+        else 'SELECT id, name, email, password_hash FROM users WHERE email = ?'
+    )
+    user = fetch_one(query, (email,))
 
     if user is None or not check_password_hash(user['password_hash'], password):
         return jsonify({'error': 'Invalid email or password.'}), 401
