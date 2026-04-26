@@ -1,3 +1,5 @@
+import io
+import json
 import os
 import sqlite3
 import uuid
@@ -5,7 +7,18 @@ from datetime import datetime, timezone
 from functools import wraps
 from pathlib import Path
 
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
+import seaborn as sns
+from sklearn.ensemble import IsolationForest, RandomForestClassifier, RandomForestRegressor
+from sklearn.linear_model import LogisticRegression, LinearRegression
+from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
+from sklearn.metrics import accuracy_score, r2_score
+from sklearn.model_selection import train_test_split
+from fpdf import FPDF
 from flask import (
     Flask,
     jsonify,
@@ -45,6 +58,8 @@ CHARTS_FOLDER.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {'csv', 'xlsx'}
 MAX_RECENT_DATASETS = 5
+PROCESSED_FOLDER = BASE_DIR / 'processed'
+PROCESSED_FOLDER.mkdir(exist_ok=True)
 
 if USE_POSTGRES and psycopg2 is None:
     raise RuntimeError('DATABASE_URL is set but psycopg2-binary is not installed.')
@@ -434,40 +449,729 @@ def chat():
         return jsonify({'error': 'Please enter a valid question.'}), 400
 
     try:
-        answer = query_dataset(user_message, active_file_path, history)
-
-        chart_url = None
-        if 'CHART_GENERATED:' in answer:
-            parts = answer.split('CHART_GENERATED:')
-            chart_filename = parts[1].strip()
-            chart_path = CHARTS_FOLDER / chart_filename
-            cache_bust = int(chart_path.stat().st_mtime_ns) if chart_path.exists() else uuid.uuid4().hex
-            chart_url = f"{url_for('static', filename=f'charts/{chart_filename}')}?v={cache_bust}"
-            answer = parts[0].strip() or 'Here is the chart you requested:'
+        result = query_dataset(user_message, active_file_path, history)
 
         return jsonify({
-            'response': answer,
-            'chart_url': chart_url,
+            'response': result.get('response', ''),
+            'chart_json': result.get('chart_json'),
+            'follow_ups': result.get('follow_ups', []),
             'dataset_summary': session.get('dataset_summary'),
         })
     except Exception as error:
         return jsonify({'error': f'Server Error: {str(error)}'}), 500
 
 
-@app.get('/', defaults={'path': ''})
-@app.get('/<path:path>')
-def serve_frontend(path):
-    """Serve the built React app in production."""
+# ─────────────────────────────────────────────────────────────────────────────
+#  EDA — Automated Exploratory Data Analysis
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _eda_statistical_summary(df):
+    """Compute descriptive statistics for all numeric columns."""
+    numeric_df = df.select_dtypes(include='number')
+    if numeric_df.empty:
+        return []
+
+    stats = numeric_df.describe().T
+    stats['median'] = numeric_df.median()
+    stats['skewness'] = numeric_df.skew()
+    stats['kurtosis'] = numeric_df.kurtosis()
+    stats['missing'] = numeric_df.isna().sum()
+    stats['missing_pct'] = (numeric_df.isna().sum() / len(df) * 100).round(2)
+
+    result = []
+    for col in stats.index:
+        row = stats.loc[col]
+        result.append({
+            'column': col,
+            'count': int(row['count']),
+            'mean': round(float(row['mean']), 4),
+            'std': round(float(row['std']), 4),
+            'min': round(float(row['min']), 4),
+            'q1': round(float(row['25%']), 4),
+            'median': round(float(row['median']), 4),
+            'q3': round(float(row['75%']), 4),
+            'max': round(float(row['max']), 4),
+            'skewness': round(float(row['skewness']), 4),
+            'kurtosis': round(float(row['kurtosis']), 4),
+            'missing': int(row['missing']),
+            'missing_pct': float(row['missing_pct']),
+        })
+    return result
+
+
+def _eda_missing_values(df):
+    """Analyze missing values per column."""
+    total = len(df)
+    missing = df.isna().sum()
+    result = []
+    for col in df.columns:
+        count = int(missing[col])
+        result.append({
+            'column': col,
+            'missing_count': count,
+            'missing_pct': round(count / total * 100, 2) if total > 0 else 0,
+            'dtype': str(df[col].dtype),
+        })
+    return result
+
+
+def _eda_correlation_matrix(df):
+    """Compute correlation matrix and generate a heatmap chart."""
+    numeric_df = df.select_dtypes(include='number')
+    if numeric_df.shape[1] < 2:
+        return None, None
+
+    corr = numeric_df.corr()
+    corr_data = []
+    for col_a in corr.columns:
+        for col_b in corr.columns:
+            corr_data.append({
+                'col_a': col_a,
+                'col_b': col_b,
+                'value': round(float(corr.loc[col_a, col_b]), 4),
+            })
+
+    # Generate heatmap
+    plt.style.use('dark_background')
+    fig, ax = plt.subplots(figsize=(max(8, numeric_df.shape[1] * 0.9), max(6, numeric_df.shape[1] * 0.7)))
+    fig.patch.set_facecolor('#1e293b')
+    ax.set_facecolor('#1e293b')
+    sns.heatmap(
+        corr,
+        annot=True,
+        fmt='.2f',
+        cmap='RdYlGn',
+        center=0,
+        square=True,
+        linewidths=0.5,
+        linecolor='#334155',
+        cbar_kws={'shrink': 0.8},
+        ax=ax,
+    )
+    ax.set_title('Correlation Matrix', fontsize=14, color='#e2e8f0', pad=16)
+    plt.tight_layout()
+    chart_filename = 'eda_correlation.png'
+    fig.savefig(CHARTS_FOLDER / chart_filename, dpi=150, bbox_inches='tight', facecolor='#1e293b')
+    plt.close(fig)
+
+    cache_bust = int((CHARTS_FOLDER / chart_filename).stat().st_mtime_ns)
+    chart_url = f"/static/charts/{chart_filename}?v={cache_bust}"
+    return corr_data, chart_url
+
+
+def _eda_missing_chart(df):
+    """Generate a missing values bar chart."""
+    missing = df.isna().sum()
+    missing = missing[missing > 0].sort_values(ascending=False)
+    if missing.empty:
+        return None
+
+    plt.style.use('dark_background')
+    fig, ax = plt.subplots(figsize=(max(8, len(missing) * 0.6), 5))
+    fig.patch.set_facecolor('#1e293b')
+    ax.set_facecolor('#1e293b')
+    bars = ax.barh(missing.index.astype(str), missing.values, color='#f87171', edgecolor='#991b1b', height=0.6)
+    ax.set_xlabel('Missing Count', color='#94a3b8')
+    ax.set_title('Missing Values by Column', fontsize=14, color='#e2e8f0', pad=16)
+    ax.invert_yaxis()
+    for bar, val in zip(bars, missing.values):
+        ax.text(bar.get_width() + 0.5, bar.get_y() + bar.get_height() / 2,
+                f'{int(val)}', va='center', color='#e2e8f0', fontsize=10)
+    plt.tight_layout()
+    chart_filename = 'eda_missing_values.png'
+    fig.savefig(CHARTS_FOLDER / chart_filename, dpi=150, bbox_inches='tight', facecolor='#1e293b')
+    plt.close(fig)
+
+    cache_bust = int((CHARTS_FOLDER / chart_filename).stat().st_mtime_ns)
+    return f"/static/charts/{chart_filename}?v={cache_bust}"
+
+
+def _eda_distribution_chart(df):
+    """Generate distribution histograms for numeric columns."""
+    numeric_cols = df.select_dtypes(include='number').columns.tolist()[:8]
+    if not numeric_cols:
+        return None
+
+    n = len(numeric_cols)
+    cols = min(n, 4)
+    rows = (n + cols - 1) // cols
+
+    plt.style.use('dark_background')
+    fig, axes = plt.subplots(rows, cols, figsize=(4 * cols, 3.5 * rows))
+    fig.patch.set_facecolor('#1e293b')
+
+    axes_flat = np.array(axes).flatten() if n > 1 else [axes]
+    for i, col in enumerate(numeric_cols):
+        ax = axes_flat[i]
+        ax.set_facecolor('#1e293b')
+        data = df[col].dropna()
+        ax.hist(data, bins=30, color='#3b82f6', edgecolor='#1e40af', alpha=0.85)
+        ax.set_title(col, fontsize=10, color='#e2e8f0')
+        ax.tick_params(colors='#94a3b8', labelsize=8)
+    for j in range(n, len(axes_flat)):
+        axes_flat[j].set_visible(False)
+
+    fig.suptitle('Numeric Distributions', fontsize=14, color='#e2e8f0', y=1.02)
+    plt.tight_layout()
+    chart_filename = 'eda_distributions.png'
+    fig.savefig(CHARTS_FOLDER / chart_filename, dpi=150, bbox_inches='tight', facecolor='#1e293b')
+    plt.close(fig)
+
+    cache_bust = int((CHARTS_FOLDER / chart_filename).stat().st_mtime_ns)
+    return f"/static/charts/{chart_filename}?v={cache_bust}"
+
+
+def _eda_outliers(df):
+    """Detect outliers using IQR method for numeric columns."""
+    numeric_df = df.select_dtypes(include='number')
+    outliers = []
+    for col in numeric_df.columns:
+        q1 = numeric_df[col].quantile(0.25)
+        q3 = numeric_df[col].quantile(0.75)
+        iqr = q3 - q1
+        lower = q1 - 1.5 * iqr
+        upper = q3 + 1.5 * iqr
+        count = int(((numeric_df[col] < lower) | (numeric_df[col] > upper)).sum())
+        outliers.append({
+            'column': col,
+            'outlier_count': count,
+            'outlier_pct': round(count / len(df) * 100, 2) if len(df) > 0 else 0,
+            'lower_bound': round(float(lower), 4),
+            'upper_bound': round(float(upper), 4),
+        })
+    return outliers
+
+
+def _eda_categorical_summary(df):
+    """Summarize categorical columns."""
+    cat_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
+    result = []
+    for col in cat_cols:
+        value_counts = df[col].value_counts().head(10)
+        result.append({
+            'column': col,
+            'unique_count': int(df[col].nunique()),
+            'missing_count': int(df[col].isna().sum()),
+            'top_values': [
+                {'value': str(k), 'count': int(v)}
+                for k, v in value_counts.items()
+            ],
+        })
+    return result
+
+
+@app.post('/api/eda')
+@login_required
+def run_eda():
+    """Run automated Exploratory Data Analysis on the active dataset."""
+    active_file_path = session.get('active_file_path')
+    if not active_file_path or not active_dataset_exists():
+        return jsonify({'error': 'No dataset loaded. Please upload one first.'}), 400
+
+    try:
+        df = load_uploaded_dataframe(active_file_path)
+
+        stats_summary = _eda_statistical_summary(df)
+        missing_analysis = _eda_missing_values(df)
+        corr_data, corr_chart = _eda_correlation_matrix(df)
+        missing_chart = _eda_missing_chart(df)
+        dist_chart = _eda_distribution_chart(df)
+        outliers = _eda_outliers(df)
+        categorical = _eda_categorical_summary(df)
+
+        # Data type breakdown
+        dtype_counts = {
+            'numeric': int(len(df.select_dtypes(include='number').columns)),
+            'categorical': int(len(df.select_dtypes(include=['object', 'category']).columns)),
+            'datetime': int(len(df.select_dtypes(include='datetime').columns)),
+            'boolean': int(len(df.select_dtypes(include='bool').columns)),
+        }
+
+        # Memory usage
+        memory_usage_bytes = int(df.memory_usage(deep=True).sum())
+        if memory_usage_bytes > 1_048_576:
+            memory_display = f"{memory_usage_bytes / 1_048_576:.2f} MB"
+        else:
+            memory_display = f"{memory_usage_bytes / 1024:.2f} KB"
+
+        return jsonify({
+            'eda': {
+                'shape': {'rows': int(len(df)), 'columns': int(len(df.columns))},
+                'dtype_counts': dtype_counts,
+                'memory_usage': memory_display,
+                'statistical_summary': stats_summary,
+                'missing_analysis': missing_analysis,
+                'correlation': corr_data,
+                'correlation_chart': corr_chart,
+                'missing_chart': missing_chart,
+                'distribution_chart': dist_chart,
+                'outliers': outliers,
+                'categorical_summary': categorical,
+            }
+        })
+    except Exception as error:
+        return jsonify({'error': f'EDA failed: {str(error)}'}), 500
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Data Preprocessing
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.post('/api/preprocess')
+@login_required
+def preprocess_data():
+    """Apply selected preprocessing steps and return a summary of changes."""
+    active_file_path = session.get('active_file_path')
+    if not active_file_path or not active_dataset_exists():
+        return jsonify({'error': 'No dataset loaded. Please upload one first.'}), 400
+
+    data = request.get_json() or {}
+    steps = data.get('steps', [])
+
+    if not steps:
+        return jsonify({'error': 'No preprocessing steps selected.'}), 400
+
+    try:
+        df = load_uploaded_dataframe(active_file_path)
+        original_shape = df.shape
+        log = []
+
+        for step in steps:
+            action = step.get('action')
+
+            if action == 'drop_missing':
+                before = len(df)
+                df = df.dropna()
+                removed = before - len(df)
+                log.append(f'Dropped {removed} rows with missing values.')
+
+            elif action == 'fill_missing':
+                strategy = step.get('strategy', 'mean')
+                columns = step.get('columns', [])
+                target_cols = columns if columns else df.select_dtypes(include='number').columns.tolist()
+                for col in target_cols:
+                    if col not in df.columns:
+                        continue
+                    if strategy == 'mean' and pd.api.types.is_numeric_dtype(df[col]):
+                        df[col] = df[col].fillna(df[col].mean())
+                    elif strategy == 'median' and pd.api.types.is_numeric_dtype(df[col]):
+                        df[col] = df[col].fillna(df[col].median())
+                    elif strategy == 'mode':
+                        mode_val = df[col].mode()
+                        if not mode_val.empty:
+                            df[col] = df[col].fillna(mode_val.iloc[0])
+                    elif strategy == 'zero':
+                        df[col] = df[col].fillna(0)
+                    elif strategy == 'ffill':
+                        df[col] = df[col].ffill()
+                log.append(f'Filled missing values using {strategy} strategy on {len(target_cols)} column(s).')
+
+            elif action == 'drop_duplicates':
+                before = len(df)
+                df = df.drop_duplicates()
+                removed = before - len(df)
+                log.append(f'Removed {removed} duplicate rows.')
+
+            elif action == 'drop_columns':
+                columns = step.get('columns', [])
+                existing = [c for c in columns if c in df.columns]
+                df = df.drop(columns=existing)
+                log.append(f'Dropped {len(existing)} column(s): {existing}')
+
+            elif action == 'encode_labels':
+                from sklearn.preprocessing import LabelEncoder
+                columns = step.get('columns', [])
+                target_cols = columns if columns else df.select_dtypes(include=['object', 'category']).columns.tolist()
+                le = LabelEncoder()
+                for col in target_cols:
+                    if col in df.columns:
+                        df[col] = df[col].astype(str)
+                        df[col] = le.fit_transform(df[col])
+                log.append(f'Label-encoded {len(target_cols)} column(s).')
+
+            elif action == 'onehot_encode':
+                columns = step.get('columns', [])
+                target_cols = columns if columns else df.select_dtypes(include=['object', 'category']).columns.tolist()[:5]
+                df = pd.get_dummies(df, columns=target_cols, drop_first=True)
+                log.append(f'One-hot encoded {len(target_cols)} column(s). New shape: {df.shape}')
+
+            elif action == 'scale_standard':
+                from sklearn.preprocessing import StandardScaler
+                columns = step.get('columns', [])
+                target_cols = columns if columns else df.select_dtypes(include='number').columns.tolist()
+                existing = [c for c in target_cols if c in df.columns]
+                if existing:
+                    scaler = StandardScaler()
+                    df[existing] = scaler.fit_transform(df[existing])
+                    log.append(f'StandardScaler applied to {len(existing)} column(s).')
+
+            elif action == 'scale_minmax':
+                from sklearn.preprocessing import MinMaxScaler
+                columns = step.get('columns', [])
+                target_cols = columns if columns else df.select_dtypes(include='number').columns.tolist()
+                existing = [c for c in target_cols if c in df.columns]
+                if existing:
+                    scaler = MinMaxScaler()
+                    df[existing] = scaler.fit_transform(df[existing])
+                    log.append(f'MinMaxScaler applied to {len(existing)} column(s).')
+
+            elif action == 'remove_outliers':
+                columns = step.get('columns', [])
+                target_cols = columns if columns else df.select_dtypes(include='number').columns.tolist()
+                before = len(df)
+                for col in target_cols:
+                    if col in df.columns and pd.api.types.is_numeric_dtype(df[col]):
+                        q1 = df[col].quantile(0.25)
+                        q3 = df[col].quantile(0.75)
+                        iqr = q3 - q1
+                        df = df[(df[col] >= q1 - 1.5 * iqr) & (df[col] <= q3 + 1.5 * iqr)]
+                removed = before - len(df)
+                log.append(f'Removed {removed} outlier rows using IQR method.')
+
+        # Save processed file
+        processed_id = uuid.uuid4().hex[:12]
+        processed_filename = f'processed_{processed_id}.csv'
+        processed_path = PROCESSED_FOLDER / processed_filename
+        df.to_csv(processed_path, index=False)
+
+        # Update session with processed dataset
+        dataset_summary = build_dataset_summary(str(processed_path), 'processed_dataset.csv', processed_id)
+        session['active_file_path'] = str(processed_path)
+        session['dataset_summary'] = dataset_summary
+
+        # Preview of the processed data
+        preview_rows = df.head(5).to_dict(orient='records')
+        # Clean NaN values from preview
+        for row in preview_rows:
+            for key in row:
+                if isinstance(row[key], float) and (np.isnan(row[key]) or np.isinf(row[key])):
+                    row[key] = None
+
+        return jsonify({
+            'message': 'Preprocessing complete.',
+            'log': log,
+            'original_shape': {'rows': int(original_shape[0]), 'columns': int(original_shape[1])},
+            'new_shape': {'rows': int(len(df)), 'columns': int(len(df.columns))},
+            'preview': preview_rows,
+            'columns': df.columns.tolist(),
+            'download_id': processed_id,
+            'dataset_summary': dataset_summary,
+        })
+    except Exception as error:
+        return jsonify({'error': f'Preprocessing failed: {str(error)}'}), 500
+
+
+@app.get('/api/download/<download_id>')
+@login_required
+def download_processed(download_id):
+    """Download a processed CSV file."""
+    processed_filename = f'processed_{download_id}.csv'
+    processed_path = PROCESSED_FOLDER / processed_filename
+
+    if not processed_path.exists():
+        return jsonify({'error': 'Processed file not found.'}), 404
+
+    return send_from_directory(PROCESSED_FOLDER, processed_filename,
+                               as_attachment=True,
+                               download_name='cleaned_dataset.csv')
+
+
+@app.get('/api/profile')
+@login_required
+def data_profile():
+    """Return an enhanced data profile for the active dataset."""
+    active_file_path = session.get('active_file_path')
+    if not active_file_path or not active_dataset_exists():
+        return jsonify({'error': 'No dataset loaded.'}), 400
+
+    try:
+        df = load_uploaded_dataframe(active_file_path)
+        total_rows = len(df)
+
+        # Column-level profiling
+        column_profiles = []
+        for col in df.columns:
+            non_null = int(df[col].notna().sum())
+            unique = int(df[col].nunique())
+            samples = df[col].dropna().head(3).astype(str).tolist()
+            quality_score = round(non_null / total_rows * 100, 1) if total_rows > 0 else 0
+
+            profile = {
+                'name': col,
+                'dtype': str(df[col].dtype),
+                'non_null': non_null,
+                'null_count': int(df[col].isna().sum()),
+                'unique': unique,
+                'unique_ratio': round(unique / total_rows * 100, 1) if total_rows > 0 else 0,
+                'quality_score': quality_score,
+                'samples': samples,
+            }
+
+            if pd.api.types.is_numeric_dtype(df[col]):
+                profile['min'] = round(float(df[col].min()), 4) if not df[col].isna().all() else None
+                profile['max'] = round(float(df[col].max()), 4) if not df[col].isna().all() else None
+                profile['mean'] = round(float(df[col].mean()), 4) if not df[col].isna().all() else None
+
+            column_profiles.append(profile)
+
+        # Memory usage
+        mem_bytes = int(df.memory_usage(deep=True).sum())
+        if mem_bytes > 1_048_576:
+            mem_display = f"{mem_bytes / 1_048_576:.2f} MB"
+        else:
+            mem_display = f"{mem_bytes / 1024:.2f} KB"
+
+        # Overall data quality
+        total_cells = total_rows * len(df.columns)
+        total_missing = int(df.isna().sum().sum())
+        overall_quality = round((1 - total_missing / total_cells) * 100, 1) if total_cells > 0 else 100
+
+        # Duplicate info
+        duplicate_count = int(df.duplicated().sum())
+
+        # Anomaly Detection (Isolation Forest)
+        anomalies = []
+        numeric_df = df.select_dtypes(include='number').dropna()
+        if not numeric_df.empty and len(numeric_df) > 50:
+            iso_forest = IsolationForest(contamination=0.05, random_state=42)
+            preds = iso_forest.fit_predict(numeric_df)
+            anomaly_indices = numeric_df[preds == -1].index
+            anomaly_count = len(anomaly_indices)
+            anomalies = {
+                'count': anomaly_count,
+                'percentage': round(anomaly_count / total_rows * 100, 2),
+                'sample_indices': anomaly_indices[:5].tolist()
+            }
+        else:
+            anomalies = {'count': 0, 'percentage': 0, 'sample_indices': []}
+
+        return jsonify({
+            'profile': {
+                'rows': total_rows,
+                'columns': int(len(df.columns)),
+                'memory_usage': mem_display,
+                'overall_quality': overall_quality,
+                'total_missing': total_missing,
+                'duplicate_rows': duplicate_count,
+                'anomalies': anomalies,
+                'column_profiles': column_profiles,
+            }
+        })
+    except Exception as error:
+        return jsonify({'error': f'Profiling failed: {str(error)}'}), 500
+
+
+@app.post('/api/history/add')
+@login_required
+def add_to_history():
+    """Add a query-response pair to the session history."""
+    data = request.get_json() or {}
+    query = data.get('query', '')
+    response_text = data.get('response', '')
+
+    if not query:
+        return jsonify({'error': 'No query provided.'}), 400
+
+    history = session.get('query_history', [])
+    history.append({
+        'query': query[:500],
+        'response': response_text[:1000],
+        'timestamp': datetime.now(timezone.utc).isoformat(timespec='seconds'),
+    })
+    session['query_history'] = history[-50:]  # Keep last 50 entries
+    return jsonify({'message': 'Saved.', 'count': len(session['query_history'])})
+
+
+@app.get('/api/history')
+@login_required
+def get_history():
+    """Return the query history for the current session."""
+    return jsonify({'history': session.get('query_history', [])})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  AutoML & Export
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.post('/api/automl')
+@login_required
+def run_automl():
+    """Train multiple models on a selected target variable and return a leaderboard."""
+    active_file_path = session.get('active_file_path')
+    if not active_file_path or not active_dataset_exists():
+        return jsonify({'error': 'No dataset loaded.'}), 400
+
+    data = request.get_json() or {}
+    target_col = data.get('target')
+
+    if not target_col:
+        return jsonify({'error': 'Target column not specified.'}), 400
+
+    try:
+        df = load_uploaded_dataframe(active_file_path).dropna()
+        if target_col not in df.columns:
+            return jsonify({'error': 'Target column not found.'}), 400
+        
+        y = df[target_col]
+        X = df.drop(columns=[target_col], errors='ignore')
+        
+        # Automatic Categorical Encoding
+        # Keep numeric columns
+        numeric_cols = X.select_dtypes(include='number').columns.tolist()
+        
+        # Keep low-cardinality object/categorical columns
+        cat_cols = [col for col in X.select_dtypes(exclude='number').columns 
+                   if X[col].nunique() < 10]
+        
+        X = X[numeric_cols + cat_cols]
+        if not cat_cols and not numeric_cols:
+            return jsonify({'error': 'No usable features available to predict target.'}), 400
+            
+        # Apply One-Hot Encoding
+        X = pd.get_dummies(X, columns=cat_cols, drop_first=True)
+        
+        if X.empty:
+            return jsonify({'error': 'No numeric features available after encoding.'}), 400
+
+        leaderboard = []
+
+        if pd.api.types.is_numeric_dtype(y) and y.nunique() > 10:
+            model_type = 'Regression'
+            metric_name = 'R² Score'
+            
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+            
+            models = {
+                'Random Forest Regressor': RandomForestRegressor(n_estimators=50, random_state=42),
+                'Linear Regression': LinearRegression(),
+                'Decision Tree Regressor': DecisionTreeRegressor(random_state=42)
+            }
+            
+            for name, model in models.items():
+                model.fit(X_train, y_train)
+                train_score = r2_score(y_train, model.predict(X_train))
+                test_score = r2_score(y_test, model.predict(X_test))
+                
+                if hasattr(model, 'feature_importances_'):
+                    importances = model.feature_importances_
+                elif hasattr(model, 'coef_'):
+                    importances = abs(model.coef_)
+                else:
+                    importances = [0] * len(X.columns)
+                    
+                top_features = sorted(zip(X.columns, importances), key=lambda x: x[1], reverse=True)[:5]
+                leaderboard.append({
+                    'name': name,
+                    'train_score': round(float(train_score), 4),
+                    'test_score': round(float(test_score), 4),
+                    'score': round(float(test_score), 4), # for backwards compatibility in sorting
+                    'feature_importance': [{'feature': f, 'importance': round(float(i), 4)} for f, i in top_features]
+                })
+
+        else:
+            model_type = 'Classification'
+            metric_name = 'Accuracy'
+            y = y.astype(str)
+            
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+            
+            models = {
+                'Random Forest Classifier': RandomForestClassifier(n_estimators=50, random_state=42),
+                'Logistic Regression': LogisticRegression(max_iter=1000, random_state=42),
+                'Decision Tree Classifier': DecisionTreeClassifier(random_state=42)
+            }
+            
+            for name, model in models.items():
+                model.fit(X_train, y_train)
+                train_score = accuracy_score(y_train, model.predict(X_train))
+                test_score = accuracy_score(y_test, model.predict(X_test))
+                
+                if hasattr(model, 'feature_importances_'):
+                    importances = model.feature_importances_
+                elif hasattr(model, 'coef_'):
+                    importances = abs(model.coef_[0])
+                else:
+                    importances = [0] * len(X.columns)
+                    
+                top_features = sorted(zip(X.columns, importances), key=lambda x: x[1], reverse=True)[:5]
+                leaderboard.append({
+                    'name': name,
+                    'train_score': round(float(train_score), 4),
+                    'test_score': round(float(test_score), 4),
+                    'score': round(float(test_score), 4),
+                    'feature_importance': [{'feature': f, 'importance': round(float(i), 4)} for f, i in top_features]
+                })
+
+        # Sort leaderboard descending by test score
+        leaderboard.sort(key=lambda x: x['test_score'], reverse=True)
+
+        return jsonify({
+            'model_type': model_type,
+            'metric_name': metric_name,
+            'leaderboard': leaderboard
+        })
+
+    except Exception as error:
+        return jsonify({'error': f'AutoML failed: {str(error)}'}), 500
+
+
+@app.get('/api/export_pdf')
+@login_required
+def export_pdf():
+    """Generate a PDF report combining dataset summary."""
+    active_file_path = session.get('active_file_path')
+    if not active_file_path or not active_dataset_exists():
+        return jsonify({'error': 'No dataset loaded.'}), 400
+
+    try:
+        df = load_uploaded_dataframe(active_file_path)
+        
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", size=16, style='B')
+        pdf.cell(200, 10, txt="Automated Data Analysis Report", ln=True, align='C')
+        
+        pdf.set_font("Arial", size=12)
+        pdf.ln(10)
+        pdf.cell(200, 10, txt=f"Total Rows: {len(df)}", ln=True)
+        pdf.cell(200, 10, txt=f"Total Columns: {len(df.columns)}", ln=True)
+        pdf.cell(200, 10, txt=f"Missing Values: {df.isna().sum().sum()}", ln=True)
+        
+        pdf.ln(10)
+        pdf.set_font("Arial", size=14, style='B')
+        pdf.cell(200, 10, txt="Columns:", ln=True)
+        pdf.set_font("Arial", size=10)
+        for col in df.columns[:20]:
+            pdf.cell(200, 8, txt=f"- {col} ({df[col].dtype})", ln=True)
+
+        if len(df.columns) > 20:
+            pdf.cell(200, 8, txt=f"... and {len(df.columns)-20} more", ln=True)
+            
+        pdf_filename = f"report_{uuid.uuid4().hex[:8]}.pdf"
+        pdf_path = PROCESSED_FOLDER / pdf_filename
+        pdf.output(str(pdf_path))
+        
+        return send_from_directory(PROCESSED_FOLDER, pdf_filename, as_attachment=True)
+
+    except Exception as error:
+        return jsonify({'error': f'PDF generation failed: {str(error)}'}), 500
+
+
+from flask import render_template
+
+@app.route('/')
+def index():
+    """Serve the Jinja frontend."""
+    return render_template('index.html')
+
+@app.route('/<path:path>')
+def serve_static(path):
+    """Serve the built React app as fallback or static files if needed."""
     if path.startswith('api/'):
         return jsonify({'error': 'Not found'}), 404
-
-    if FRONTEND_DIST.exists():
-        requested_path = FRONTEND_DIST / path
-        if path and requested_path.exists() and requested_path.is_file():
-            return send_from_directory(FRONTEND_DIST, path)
-        return send_from_directory(FRONTEND_DIST, 'index.html')
-
-    return frontend_placeholder()
+    
+    # Just in case, if they request anything else, we can fallback
+    return jsonify({'error': 'Not found'}), 404
 
 
 if __name__ == '__main__':

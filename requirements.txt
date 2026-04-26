@@ -4,6 +4,10 @@ openai
 groq
 pandas
 matplotlib
+seaborn
+scikit-learn
+plotly
+fpdf2
 python-dotenv
 tabulate
 openpyxl

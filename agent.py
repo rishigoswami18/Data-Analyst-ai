@@ -140,7 +140,7 @@ def query_dataset(user_query, file_path, history=None):
     Sample data (first 3 rows):
     {head}
 
-    {f"Recent conversation context (use this to understand follow-up questions):" + chr(10) + history_context if history_context else ""}
+    {f"Recent conversation context:" + chr(10) + history_context if history_context else ""}
 
     User request:
     "{user_query}"
@@ -149,14 +149,12 @@ def query_dataset(user_query, file_path, history=None):
     1. Write a python code snippet that uses pandas to answer the user's question.
     2. To return the final answer, use python's 'print()' function. The printed output is what the user will see.
     3. Make the printed output conversational and friendly (e.g., "The total revenue is $X").
-    4. {"The user explicitly asked for a chart. Write code using matplotlib to save the chart absolutely EXACTLY to the path 'static/charts/trend.png', and then print 'CHART_GENERATED: trend.png'." if requires_chart else "Do NOT generate any chart, do NOT call matplotlib savefig, and do NOT print any CHART_GENERATED marker because the user did not ask for a visual output."}
-    5. Do NOT include ANY text outside of the python code block. Only return the executable code.
-    6. Ensure you handle missing values or basic string conversions if needed.
-    7. CRITICAL: If you use pandas `.dt.to_period()` for dates, you MUST convert that column to strings (e.g., `.astype(str)`) BEFORE plotting with matplotlib. Matplotlib cannot plot 'Period' objects and will crash.
-    8. CRITICAL: For ALL matplotlib charts, use a dark theme: call plt.style.use('dark_background') and set facecolor='#1e293b' on both figure and axes for seamless integration with the dark UI.
-    9. Do not fabricate metrics, assumptions, or columns.
-    10. Do not import restricted modules or access files, networks, or the OS.
-    11. Return executable Python only. No markdown and no explanation outside the code.
+    4. {"The user explicitly asked for a chart. Write code using plotly.express as px to generate a chart. You MUST use fig.update_layout(template='plotly_dark', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)') to match our dark theme. Then print 'CHART_JSON: ' followed by fig.to_json(). Do NOT use matplotlib or plt." if requires_chart else "Do NOT generate any chart or CHART_JSON marker because the user did not ask for a visual output."}
+    5. At the very end of your python code, you MUST generate 3 highly relevant and smart follow-up questions based on the insights you just found. Print them strictly in this format: 'FOLLOW_UPS: ["Question 1", "Question 2", "Question 3"]'.
+    6. Do NOT include ANY text outside of the python code block. Only return the executable code.
+    7. Ensure you handle missing values or basic string conversions if needed.
+    8. Do not fabricate metrics, assumptions, or columns.
+    9. Do not import restricted modules or access files, networks, or the OS.
     """
 
     try:
@@ -170,33 +168,53 @@ def query_dataset(user_query, file_path, history=None):
         
         code = _extract_python_code(response.choices[0].message.content)
         if not _validate_generated_code(code):
-            return "The generated analysis plan included an unsafe operation, so the request was blocked. Please try rephrasing the question."
+            return {"response": "The generated analysis plan included an unsafe operation. Please try rephrasing."}
 
         # Capture print outputs safely
         import io
         import sys
+        import json
+        import plotly.express as px
         
         old_stdout = sys.stdout
         redirected_output = sys.stdout = io.StringIO()
         
         try:
-            # Provide only the analysis tools required for grounded execution.
-            exec_globals = {"df": df.copy(), "plt": plt, "pd": pd}
+            exec_globals = {"df": df.copy(), "px": px, "pd": pd, "json": json}
             exec(code, exec_globals)
         except Exception as e:
             sys.stdout = old_stdout
-            return f"Error executing calculation: {str(e)}\n\n(AI suggested: {code})"
+            return {"response": f"Error executing calculation: {str(e)}\n\n(AI suggested: {code})"}
             
         sys.stdout = old_stdout
         result = redirected_output.getvalue().strip()
 
-        if not requires_chart and "CHART_GENERATED:" in result:
-            result = result.split("CHART_GENERATED:")[0].strip()
+        # Parse outputs
+        chart_json = None
+        follow_ups = []
+        final_text = []
+
+        for line in result.split("\n"):
+            if line.startswith("CHART_JSON:"):
+                chart_json = line.replace("CHART_JSON:", "", 1).strip()
+            elif line.startswith("FOLLOW_UPS:"):
+                try:
+                    follow_ups_str = line.replace("FOLLOW_UPS:", "", 1).strip()
+                    follow_ups = json.loads(follow_ups_str)
+                except:
+                    pass
+            else:
+                final_text.append(line)
         
-        if not result:
-            result = "No output generated. Try rephrasing your question."
-            
-        return result
+        response_text = "\n".join(final_text).strip()
+        if not response_text:
+            response_text = "Analysis complete."
+
+        return {
+            "response": response_text,
+            "chart_json": chart_json,
+            "follow_ups": follow_ups
+        }
 
     except Exception as e:
-        return f"AI Error: {str(e)}"
+        return {"response": f"AI Error: {str(e)}"}

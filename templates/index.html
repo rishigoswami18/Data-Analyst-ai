@@ -3,10 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Agentic Analytics Copilot</title>
+    <title>AI Data Analyst — Capstone Project</title>
+    <meta name="description" content="AI-powered data analysis platform with automated EDA, preprocessing pipeline, and natural language querying using LLMs.">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
+    <!-- Toast Notification -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- Auth Screen -->
     <div class="auth-shell" id="auth-shell">
         <section class="auth-panel">
             <div class="auth-copy">
@@ -68,25 +73,26 @@
         </section>
     </div>
 
+    <!-- Main App -->
     <div class="app-container" id="app-container" hidden>
         <aside class="sidebar">
             <div class="sidebar-header">
                 <span class="eyebrow">AI-Powered Data Analysis</span>
-                <h2>Data Analysis Assistant</h2>
-                <p>Upload a dataset and explore trends, KPIs, and business insights through natural language questions.</p>
+                <h2>Data Analyst</h2>
+                <p>Upload a dataset, explore with automated EDA, preprocess, and query with natural language.</p>
             </div>
 
             <div class="account-section">
                 <div>
                     <span class="account-label">Signed in as</span>
-                    <strong id="account-name">{{ user.name if user else '' }}</strong>
-                    <p id="account-email">{{ user.email if user else '' }}</p>
+                    <strong id="account-name"></strong>
+                    <p id="account-email"></p>
                 </div>
                 <button id="logout-btn" class="secondary-btn" type="button">Logout</button>
             </div>
 
             <div class="upload-section">
-                <p>Supports `.csv` and `.xlsx` files for KPI analysis, trend discovery, and chart generation.</p>
+                <p>Supports <code>.csv</code> and <code>.xlsx</code> files.</p>
                 <input type="file" id="file-input" accept=".csv, .xlsx" style="display: none;">
                 <button id="upload-btn" class="primary-btn">Upload Dataset</button>
                 <div id="upload-status" class="status-msg"></div>
@@ -101,13 +107,24 @@
                 </div>
             </div>
 
+            <!-- Query History -->
+            <div class="history-section" id="history-section">
+                <div class="history-header" id="history-toggle">
+                    <h3>Query History</h3>
+                    <span class="history-count" id="history-count">0</span>
+                </div>
+                <div class="history-list" id="history-list"></div>
+            </div>
+
             <div class="capability-section">
                 <h3>Capabilities</h3>
                 <ul>
-                    <li>Understands uploaded tabular data</li>
-                    <li>Answers analytical questions using pandas</li>
-                    <li>Summarizes results clearly</li>
-                    <li>Creates charts when needed</li>
+                    <li>📊 Automated EDA with charts</li>
+                    <li>🧹 Data preprocessing pipeline</li>
+                    <li>🤖 Natural language querying</li>
+                    <li>📈 Chart generation on demand</li>
+                    <li>📥 Export cleaned datasets</li>
+                    <li>🔍 Outlier & missing value detection</li>
                 </ul>
             </div>
 
@@ -122,29 +139,213 @@
             </div>
         </aside>
 
-        <main class="chat-container">
-            <section class="hero-panel">
-                <div>
-                    <span class="hero-tag">Portfolio Project</span>
-                    <h1>Ask questions about your data</h1>
-                    <p>A simple analytics interface for exploring uploaded datasets, generating insights, and visualizing trends.</p>
-                </div>
-            </section>
+        <main class="main-content">
+            <!-- Workspace Tabs -->
+            <div class="workspace-tabs">
+                <button class="workspace-tab active" data-tab="chat" id="tab-chat">
+                    <span class="tab-icon">💬</span> Chat
+                </button>
+                <button class="workspace-tab" data-tab="eda" id="tab-eda">
+                    <span class="tab-icon">📊</span> EDA
+                </button>
+                <button class="workspace-tab" data-tab="preprocess" id="tab-preprocess">
+                    <span class="tab-icon">🧹</span> Preprocessing
+                </button>
+                <button class="workspace-tab" data-tab="automl" id="tab-automl">
+                    <span class="tab-icon">🤖</span> AutoML
+                </button>
+            </div>
 
-            <div id="chat-box" class="chat-box">
-                <div class="message system-message">
-                    <div class="avatar">AG</div>
-                    <div class="bubble">Welcome. Upload a dataset to begin, and then ask questions about trends, summaries, comparisons, or charts.</div>
+            <!-- Chat Panel -->
+            <div class="tab-panel active" id="panel-chat">
+                <section class="hero-panel">
+                    <div>
+                        <span class="hero-tag">Capstone Project</span>
+                        <h1>Ask questions about your data</h1>
+                        <p>A natural language analytics interface for exploring datasets, generating insights, and visualizing trends using AI.</p>
+                    </div>
+                </section>
+
+                <div id="chat-box" class="chat-box">
+                    <div class="message system-message">
+                        <div class="avatar">AG</div>
+                        <div class="bubble">Welcome! Upload a dataset to begin. You can then ask questions, run EDA, or preprocess your data.</div>
+                    </div>
+                </div>
+
+                <div class="input-area">
+                    <input type="text" id="chat-input" placeholder="Ask a question about your dataset..." autocomplete="off" disabled>
+                    <button id="send-btn" disabled>Analyze</button>
                 </div>
             </div>
 
-            <div class="input-area">
-                <input type="text" id="chat-input" placeholder="Ask a question about your dataset..." autocomplete="off" disabled>
-                <button id="send-btn" disabled>Analyze</button>
+            <!-- EDA Panel -->
+            <div class="tab-panel" id="panel-eda">
+                <section class="eda-header">
+                    <div>
+                        <span class="hero-tag">Exploratory Data Analysis</span>
+                        <h1>Automated EDA Report</h1>
+                        <p>One-click comprehensive analysis — statistical summaries, distributions, correlations, missing values, and outlier detection.</p>
+                    </div>
+                    <div style="display: flex; gap: 10px; flex-direction: column; align-items: flex-end;">
+                        <button id="run-eda-btn" class="primary-btn eda-run-btn" disabled>
+                            <span id="eda-btn-text">Run Full EDA</span>
+                            <span id="eda-spinner" class="spinner" hidden></span>
+                        </button>
+                        <a href="/api/export_pdf" id="export-pdf-btn" class="secondary-btn" style="text-decoration: none; display: none;" target="_blank">📄 Export PDF Report</a>
+                    </div>
+                </section>
+
+                <div id="eda-results" class="eda-results">
+                    <div class="eda-placeholder">
+                        <div class="eda-placeholder-icon">📊</div>
+                        <h2>No EDA Report Yet</h2>
+                        <p>Upload a dataset and click "Run Full EDA" to generate a comprehensive analysis report.</p>
+                    </div>
+                </div>
             </div>
+
+            <!-- Preprocessing Panel -->
+            <div class="tab-panel" id="panel-preprocess">
+                <section class="preprocess-header">
+                    <div>
+                        <span class="hero-tag">Data Preprocessing</span>
+                        <h1>Clean & Transform</h1>
+                        <p>Apply industry-standard preprocessing steps — handle missing values, encode categoricals, scale features, remove outliers, and export the cleaned dataset.</p>
+                    </div>
+                </section>
+
+                <div class="preprocess-content">
+                    <div class="preprocess-pipeline">
+                        <h3>Pipeline Steps</h3>
+                        <p class="preprocess-hint">Select the operations to apply. They will run sequentially.</p>
+
+                        <div class="pipeline-steps" id="pipeline-steps">
+                            <label class="pipeline-step">
+                                <input type="checkbox" value="drop_duplicates" class="step-checkbox">
+                                <div class="step-info">
+                                    <strong>Remove Duplicates</strong>
+                                    <span>Drop identical rows from the dataset</span>
+                                </div>
+                            </label>
+
+                            <label class="pipeline-step">
+                                <input type="checkbox" value="drop_missing" class="step-checkbox">
+                                <div class="step-info">
+                                    <strong>Drop Missing Rows</strong>
+                                    <span>Remove all rows containing any null values</span>
+                                </div>
+                            </label>
+
+                            <label class="pipeline-step">
+                                <input type="checkbox" value="fill_missing" class="step-checkbox" data-has-options="true">
+                                <div class="step-info">
+                                    <strong>Fill Missing Values</strong>
+                                    <span>Impute nulls using a chosen strategy</span>
+                                </div>
+                                <select class="step-option" id="fill-strategy">
+                                    <option value="mean">Mean</option>
+                                    <option value="median">Median</option>
+                                    <option value="mode">Mode</option>
+                                    <option value="zero">Zero</option>
+                                    <option value="ffill">Forward Fill</option>
+                                </select>
+                            </label>
+
+                            <label class="pipeline-step">
+                                <input type="checkbox" value="remove_outliers" class="step-checkbox">
+                                <div class="step-info">
+                                    <strong>Remove Outliers (IQR)</strong>
+                                    <span>Filter rows outside 1.5× IQR bounds on numeric columns</span>
+                                </div>
+                            </label>
+
+                            <label class="pipeline-step">
+                                <input type="checkbox" value="encode_labels" class="step-checkbox">
+                                <div class="step-info">
+                                    <strong>Label Encode Categoricals</strong>
+                                    <span>Convert text categories to integer labels</span>
+                                </div>
+                            </label>
+
+                            <label class="pipeline-step">
+                                <input type="checkbox" value="onehot_encode" class="step-checkbox">
+                                <div class="step-info">
+                                    <strong>One-Hot Encode</strong>
+                                    <span>Create binary columns for each category (up to 5 columns)</span>
+                                </div>
+                            </label>
+
+                            <label class="pipeline-step">
+                                <input type="checkbox" value="scale_standard" class="step-checkbox">
+                                <div class="step-info">
+                                    <strong>Standard Scaling</strong>
+                                    <span>Z-score normalization (mean=0, std=1)</span>
+                                </div>
+                            </label>
+
+                            <label class="pipeline-step">
+                                <input type="checkbox" value="scale_minmax" class="step-checkbox">
+                                <div class="step-info">
+                                    <strong>Min-Max Scaling</strong>
+                                    <span>Scale features to [0, 1] range</span>
+                                </div>
+                            </label>
+                        </div>
+
+                        <div class="pipeline-actions">
+                            <button id="run-preprocess-btn" class="primary-btn" disabled>
+                                <span id="preprocess-btn-text">Apply Pipeline</span>
+                                <span id="preprocess-spinner" class="spinner" hidden></span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="preprocess-results" id="preprocess-results">
+                        <div class="eda-placeholder">
+                            <div class="eda-placeholder-icon">🧹</div>
+                            <h2>No Results Yet</h2>
+                            <p>Select preprocessing steps and click "Apply Pipeline" to transform your dataset.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AutoML Panel -->
+            <div class="tab-panel" id="panel-automl">
+                <section class="automl-header" style="padding: 34px 40px; border-bottom: 1px solid var(--border-color);">
+                    <div>
+                        <span class="hero-tag">Predictive Analytics</span>
+                        <h1>One-Click AutoML</h1>
+                        <p>Train a Random Forest model on your dataset instantly. Find out which features are driving your target variable.</p>
+                    </div>
+                </section>
+                
+                <div style="padding: 30px 40px;">
+                    <div style="background: rgba(15,23,42,0.4); border: 1px solid var(--border-color); border-radius: 16px; padding: 25px; max-width: 600px;">
+                        <h3 style="margin-bottom: 15px; font-size: 1.2rem;">Configure Model</h3>
+                        <label style="display: block; color: var(--text-secondary); margin-bottom: 8px;">Select Target Column (What to predict):</label>
+                        <select id="automl-target" style="width: 100%; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 12px; border-radius: 8px; margin-bottom: 20px; outline: none;"></select>
+                        <button id="run-automl-btn" class="primary-btn" style="width: 100%;" disabled>
+                            <span id="automl-btn-text">Train Model</span>
+                            <span id="automl-spinner" class="spinner" hidden></span>
+                        </button>
+                    </div>
+
+                    <div id="automl-results" style="margin-top: 30px;">
+                        <div class="eda-placeholder">
+                            <div class="eda-placeholder-icon">🤖</div>
+                            <h2>No Model Trained</h2>
+                            <p>Select a target column and click "Train Model".</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
         </main>
     </div>
 
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>
